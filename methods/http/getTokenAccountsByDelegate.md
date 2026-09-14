@@ -20,4 +20,5 @@ Invalid pubkeys, filter shapes, token programs, and encodings return `InvalidPar
 
 ## Implementation notes
 
+- [**Agave**](../../implementations/agave.md): reference implementation. See the pinned [request handler](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L3557-L3569) and [processor](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L2227-L2297).
 - [**Cloudbreak**](../../implementations/cloudbreak.md) supports SPL Token and Token-2022 through a shared owner/delegate handler. It rejects `processed` with -32003 or serves confirmed state when configured to downgrade. It accepts but does not enforce `minContextSlot`. Cloudbreak does not impose a final pubkey order across all query and encoding paths; live tests must establish the returned order.
