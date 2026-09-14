@@ -11,4 +11,5 @@ Returns whether `blockhash` is still in the selected bank's recent-blockhash que
 
 ## Implementation notes
 
+- [**Agave**](../../implementations/agave.md): reference implementation. See the pinned [request handler](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L4370-L4379) and [processor](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L2465-L2473).
 - [**Superbank**](../../implementations/superbank.md): tests a recent-block window over ClickHouse-stored blocks. `processed` requires the optional gRPC head cache; without it, the method serves `confirmed` and `finalized` views only. A retained blockhash outside the processing-age window returns false.
