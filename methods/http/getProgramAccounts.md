@@ -56,6 +56,7 @@ bare base58 string rather than a `[data, encoding]` tuple.
 
 ## Implementation notes
 
+- [**Agave**](../../implementations/agave.md): implements the base method but not the `valueCmp` extension. Its pinned [filter enum](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc-client-types/src/filter.rs#L14-L23) has no `valueCmp` variant.
 - **cloudbreak**:
   - supports `valueCmp` with the wire format defined here. It does not enforce
     the standard four-filter limit and accepts longer filter arrays.
