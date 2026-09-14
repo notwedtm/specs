@@ -78,5 +78,5 @@ the config object are ignored by the reference implementation.
   - Supports transaction v1 (SIMD-0385) when the request sends
     `maxSupportedTransactionVersion: 1`; JSON encodings then report
     `version: 1` and expose `message.transactionConfig`.
-- **Agave**: does not recognize `slot` and ignores it as an unknown config member, so it performs the normal signature lookup.
+- [**Agave**](../../implementations/agave.md): implements the base method but not the `slot` extension. The pinned [request handler](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L4279-L4291) ignores `slot` as an unknown config member and performs the normal signature lookup.
 - **cloudbreak**: method not served (account-state RPC only).
