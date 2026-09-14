@@ -11,4 +11,5 @@ Returns the slots that contain blocks in the inclusive range from `startSlot` th
 
 ## Implementation notes
 
+- [**Agave**](../../implementations/agave.md): reference implementation. See the pinned [request handler](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L4244-L4258) and [processor](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L1444-L1541).
 - [**Superbank**](../../implementations/superbank.md): reads slot metadata from ClickHouse. It rejects `processed` unless the optional gRPC head cache is enabled, and does not accept `minContextSlot`.
