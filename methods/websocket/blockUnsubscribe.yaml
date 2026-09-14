@@ -11,6 +11,7 @@ result:
   summary: True when the subscription is cancelled.
   schema: { type: boolean }
 errors:
+  - $ref: '#/components/errors/MethodNotFound'
   - $ref: '#/components/errors/InvalidParams'
 examples:
   - name: basic
