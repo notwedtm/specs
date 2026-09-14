@@ -18,4 +18,5 @@ Invalid pubkeys, configurations, and encodings return `InvalidParams` (-32602). 
 
 ## Implementation notes
 
+- [**Agave**](../../implementations/agave.md): no public `getTokenAccountsByMint` method exists at the reviewed revision. The nearest pinned [token-account filter builder](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L2299-L2428) is internal support for other RPC methods.
 - [**Cloudbreak**](../../implementations/cloudbreak.md) ships this method as a streamed extension. It currently accepts any indexed owner program rather than only the two token programs. It rejects `processed` with -32003 or serves confirmed state when configured to downgrade. A `minContextSlot` failure uses -32000 with null data. A database failure uses InternalError (-32603), or can truncate the response when it occurs after streaming begins.
