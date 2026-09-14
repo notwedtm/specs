@@ -14,4 +14,5 @@ Each epoch-credit tuple is `[epoch, credits, previousCredits]`. A vote account i
 
 ## Implementation notes
 
+- [**Agave**](../../implementations/agave.md): reference implementation. See the pinned [request handler](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L3011-L3018) and [processor](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L1160-L1251).
 - [**Cloudbreak**](../../implementations/cloudbreak.md) requires both Vote and Stake programs in its index. It returns -32602 when the method is disabled and NodeUnhealthy (-32005) while the first stake snapshot is not ready. It accepts but ignores `commitment` and always derives the reference slot from finalized indexed state.
