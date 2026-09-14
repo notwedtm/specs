@@ -15,5 +15,6 @@ Returns a cursor-paginated history of transactions that involve `address`. The d
 
 ## Implementation notes
 
+- [**Agave**](../../implementations/agave.md): no public `getTransactionsForAddress` method exists at the reviewed revision. The nearest pinned primitive is [`getSignaturesForAddress`](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L1888-L2032), which does not implement this contract.
 - [**Superbank**](../../implementations/superbank.md): is the reference implementation. `tokenAccounts` requires its optional token-owner activity data; requests for a non-`none` token filter fail with `InvalidParams` when that data is unavailable.
 - [**Superbank**](../../implementations/superbank.md): accepts only `json`, `jsonParsed`, `base58`, and `base64` for full pages. It accepts option values case-insensitively and ignores unknown option and filter members. `processed` requires the optional gRPC head cache; otherwise it fails with `InvalidParams`.
