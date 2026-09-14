@@ -16,7 +16,7 @@ const cleanup: (() => Promise<unknown> | void)[] = []
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close() })
 const options: RunOptions = { endpoint: '', label: 'fixture', version: 'test', timeout: 500, maxBytes: 10_000, delay: 0, notificationWait: 10, discover: false }
 
-function fixture(metadata: any = { readOnly: true, category: 'Custom' }, suite?: any) {
+function fixture(metadata: any = { category: 'Custom', tests: [{ name: 'basic', params: [7, 'compact'] }] }, suite?: any) {
   const root = makeFixture({
     'methods/http/newRead.yaml': stringify({
       name: 'newRead', summary: 'An unknown method', status: 'standard', implementations: { agave: { status: 'full' } },
@@ -47,7 +47,7 @@ async function endpoint(handler: (body: any) => any) {
 }
 
 describe('declarative compatibility definitions', () => {
-  it('executes a new method from real YAML alone, with ordered example parameters and schema validation', async () => {
+  it('executes a new method from real YAML alone, with explicit parameters and schema validation', async () => {
     const { root, spec } = fixture()
     expect(validateSpec(root)).toEqual([])
     const requests: any[] = []
@@ -55,12 +55,12 @@ describe('declarative compatibility definitions', () => {
     const report = await run(spec, selectMethods(spec.methods, ['custom'], []), { ...options, endpoint: url })
     expect(requests).toMatchObject([{ method: 'newRead', params: [7, 'compact'] }])
     expect(report.summary.pass).toBe(1)
-    expect(report.results[0]).toMatchObject({ category: 'Custom', probe: 'example/basic' })
-    expect(report.results[0].source).toMatch(/newRead.yaml#examples$/)
+    expect(report.results[0]).toMatchObject({ category: 'Custom', probe: 'basic' })
+    expect(report.results[0].source).toMatch(/newRead.yaml#tests$/)
   })
 
   it('changes behavior expectations by editing only YAML', async () => {
-    const metadata = { readOnly: true, tests: [{ name: 'exact', params: [7], expect: { result: { const: 42 } } }] }
+    const metadata = { tests: [{ name: 'exact', params: [7], expect: { result: { const: 42 } } }] }
     const { root, spec } = fixture(metadata)
     const url = await endpoint(() => ({ result: 42 }))
     expect((await run(spec, spec.methods, { ...options, endpoint: url })).summary.pass).toBe(1)
@@ -74,7 +74,7 @@ describe('declarative compatibility definitions', () => {
   })
 
   it('expands matrices, captures values, resolves fixtures, and tests symbolic errors', async () => {
-    const { spec } = fixture({ readOnly: true, tests: [
+    const { spec } = fixture({ tests: [
       { name: 'capture', params: [7], capture: { previous: '' } },
       { name: 'variant', matrix: { mode: ['first', 'second'] }, params: [{ $fixture: 'previous' }, { $matrix: 'mode' }], expect: { result: { const: { $fixture: 'previous' } } } },
       { name: 'bad-input', params: ['invalid'], expect: { error: 'InvalidParams' } },
@@ -87,7 +87,7 @@ describe('declarative compatibility definitions', () => {
   })
 
   it('skips missing live fixtures while executing independent cases', async () => {
-    const { spec } = fixture({ readOnly: true, tests: [
+    const { spec } = fixture({ tests: [
       { name: 'live', params: [{ $fixture: 'live' }] },
       { name: 'bad-input', params: ['invalid'], expect: { error: 'InvalidParams' } },
     ] }, { version: 1, fixtures: { live: { schema: { type: 'integer' } } } })
@@ -98,22 +98,22 @@ describe('declarative compatibility definitions', () => {
   })
 
   it.each([
-    { readOnly: true, tests: [{ name: 'bad', params: [7], typo: true }] },
-    { readOnly: true, tests: [{ name: 'bad', params: [{ $fixture: 'unknown' }] }] },
-    { readOnly: true, tests: [{ name: 'bad', params: [{ $matrix: 'unknown' }] }] },
-    { readOnly: true, tests: [{ name: 'bad', params: [], expect: { error: 'Unknown' } }] },
-    { readOnly: true, tests: [{ name: 'bad', params: [7], expect: { result: { type: 'unknown' } } }] },
-    { readOnly: true, tests: [{ name: 'bad', params: ['wrong-type'] }] },
-    { readOnly: true, tests: [{ name: 'duplicate', params: [7] }, { name: 'duplicate', params: [7] }] },
-    { readOnly: true, testSetup: [{ method: 'unknown', params: [] }] },
-    { readOnly: true, tests: [{ name: 'observe-http', observe: true, subscription: 1 }] },
-    { tests: [{ name: 'requires-safety-declaration', params: [7] }] },
+    { tests: [{ name: 'bad', params: [7], typo: true }] },
+    { tests: [{ name: 'bad', params: [{ $fixture: 'unknown' }] }] },
+    { tests: [{ name: 'bad', params: [{ $matrix: 'unknown' }] }] },
+    { tests: [{ name: 'bad', params: [], expect: { error: 'Unknown' } }] },
+    { tests: [{ name: 'bad', params: [7], expect: { result: { type: 'unknown' } } }] },
+    { tests: [{ name: 'bad', params: ['wrong-type'] }] },
+    { tests: [{ name: 'duplicate', params: [7] }, { name: 'duplicate', params: [7] }] },
+    { testSetup: [{ method: 'unknown', params: [] }] },
+    { tests: [{ name: 'observe-http', observe: true, subscription: 1 }] },
+    { tests: null },
     { readOnly: 'true' },
-    { readOnly: true, tests: { cases: [] } },
-    { readOnly: true, testExamples: 'true' },
-    { readOnly: true, testSetup: {} },
+    { tests: { cases: [] } },
+    { testExamples: 'true' },
+    { testSetup: {} },
     { category: 1 },
-    { 'x-compatibility': { readOnly: true, category: 'Custom' } },
+    { 'x-compatibility': { category: 'Custom' } },
   ])('rejects invalid definitions before network access: %j', async (metadata) => {
     const { spec } = fixture(metadata)
     let calls = 0
@@ -123,50 +123,67 @@ describe('declarative compatibility definitions', () => {
     expect(calls).toBe(0)
   })
 
-  it('does not execute examples or setup without the read-only opt-in', async () => {
-    for (const metadata of [undefined, { readOnly: false, testSetup: [{ method: 'newRead', params: [7] }] }]) {
-      const { spec } = fixture(metadata)
-      spec.methods[0].yaml.readOnly = metadata?.readOnly
-      expect(caseSources(spec.methods[0])).toEqual([])
-      spec.methods[0].yaml.testSetup = []
-      if (!metadata) delete spec.methods[0].yaml.testSetup
-      const report = await run(spec, spec.methods, options)
-      expect(report.summary).toMatchObject({ skipped: 1, pass: 0, error: 0 })
-    }
+  it.each([undefined, []])('does not execute sendTransaction examples or setup when tests are %j', async (tests) => {
+    const { spec } = fixture({ tests, testSetup: [{ method: 'prerequisite', params: [7] }] })
+    const target = spec.methods[0]
+    target.name = target.yaml.name = 'sendTransaction'
+    const prerequisite = structuredClone(target)
+    prerequisite.name = prerequisite.yaml.name = 'prerequisite'
+    prerequisite.yaml.tests = [{ name: 'explicit', params: [7] }]
+    delete prerequisite.yaml.testSetup
+    spec.methods.push(prerequisite)
+    let calls = 0
+    const url = await endpoint(() => { calls++; return { result: 7 } })
+    expect(target.yaml.examples).toHaveLength(1)
+    expect(checkCompatibility(spec)).toEqual([])
+    const report = await run(spec, [target], { ...options, endpoint: url, discover: true })
+    expect(report.summary).toMatchObject({ skipped: 1, pass: 0, error: 0 })
+    expect(calls).toBe(0)
+  })
+
+  it.each(['setup', 'discovery'])('rejects an untested method as a %s target before sending requests', async (kind) => {
+    const { spec } = fixture()
+    const untested = structuredClone(spec.methods[0])
+    untested.name = untested.yaml.name = 'sendTransaction'
+    delete untested.yaml.tests
+    spec.methods.push(untested)
+    if (kind === 'setup') spec.methods[0].yaml.testSetup = [{ method: 'sendTransaction', params: [7] }]
+    else spec.compatibility = { version: 1, fixtures: {}, discovery: [{ name: 'bad', provides: [], steps: [{ name: 'bad', method: 'sendTransaction', params: [7], capture: {} }] }] }
+    let calls = 0
+    const url = await endpoint(() => { calls++; return { result: 7 } })
+    await expect(run(spec, spec.methods, { ...options, endpoint: url, discover: true })).rejects.toThrow('declared tests')
+    expect(calls).toBe(0)
   })
 
   it('loads and bundles suite and method metadata without losing test declarations', () => {
     const suite = { version: 1, fixtures: { count: { schema: { type: 'integer' }, value: 7 } } }
-    const metadata = { readOnly: true, category: 'Custom', tests: [{ name: 'exact', params: [7], expect: { result: { const: 42 } } }], testSetup: [], testExamples: false }
+    const metadata = { category: 'Custom', tests: [{ name: 'exact', params: [7], expect: { result: { const: 42 } } }], testSetup: [] }
     const { root, spec } = fixture(metadata, suite)
     const built = buildDocument(spec, { title: 'Test', version: 'test' })
     expect(validateSpec(root)).toEqual([])
     expect(built['x-test-config']).toEqual(suite)
     expect(built.methods[0]['x-category']).toBe('Custom')
-    expect(built.methods[0]['x-read-only']).toBe(true)
+    expect(built.methods[0]).not.toHaveProperty('x-read-only')
     expect(built.methods[0]['x-tests']).toEqual(metadata.tests)
     expect(built.methods[0]['x-test-setup']).toEqual([])
-    expect(built.methods[0]['x-test-examples']).toBe(false)
+    expect(built.methods[0]).not.toHaveProperty('x-test-examples')
     for (const key of Object.keys(metadata)) expect(built.methods[0]).not.toHaveProperty(key)
     expect(built).not.toHaveProperty('x-compatibility')
     expect(built.methods[0]).not.toHaveProperty('x-compatibility')
   })
 
-  it('keeps false read-only declarations and empty test lists in the bundle', () => {
-    const { spec } = fixture({ readOnly: false, tests: [] })
+  it('preserves empty test lists in the bundle', () => {
+    const { spec } = fixture({ tests: [] })
     const built = buildDocument(spec, { title: 'Test', version: 'test' })
-    expect(built.methods[0]['x-read-only']).toBe(false)
     expect(built.methods[0]['x-tests']).toEqual([])
   })
 
   it.each([
-    [{ readOnly: true }, ['example/basic']],
-    [{ readOnly: true, tests: [] }, []],
-    [{ readOnly: true, tests: [{ name: 'explicit', params: [7] }] }, ['explicit']],
-    [{ readOnly: true, tests: [{ name: 'explicit', params: [7] }], testExamples: true }, ['example/basic', 'explicit']],
-    [{ readOnly: true, testExamples: false }, []],
+    [{}, []],
+    [{ tests: [] }, []],
+    [{ tests: [{ name: 'explicit', params: [7] }] }, ['explicit']],
     [{ category: 'Custom' }, []],
-  ])('selects examples and explicit tests predictably: %j', (metadata, names) => {
+  ])('executes only explicit tests: %j', (metadata, names) => {
     const { spec } = fixture(metadata)
     expect(checkCompatibility(spec)).toEqual([])
     expect(caseSources(spec.methods[0]).map((source) => source.name)).toEqual(names)
@@ -179,16 +196,16 @@ describe('declarative compatibility definitions', () => {
   })
 
   it('rejects invalid fixture overrides before making requests', async () => {
-    const { spec } = fixture({ readOnly: true }, { version: 1, fixtures: { count: { schema: { type: 'integer' }, value: 7 } } })
+    const { spec } = fixture({}, { version: 1, fixtures: { count: { schema: { type: 'integer' }, value: 7 } } })
     for (const fixtures of [{ typo: 7 }, { count: 'wrong' }, { count: Number.MAX_SAFE_INTEGER + 1 }]) {
       await expect(run(spec, spec.methods, { ...options, fixtures })).rejects.toThrow('Invalid compatibility definitions')
     }
   })
 
-  it('does not discover fixtures for methods without a read-only declaration', async () => {
-    const { spec } = fixture({ readOnly: false, tests: [{ name: 'live', params: [{ $fixture: 'count' }] }] }, {
+  it.each([undefined, []])('does not discover fixtures for methods with tests %j', async (tests) => {
+    const { spec } = fixture({ tests, testSetup: [{ method: 'anotherRead', params: [{ $fixture: 'count' }] }] }, {
       version: 1, fixtures: { count: { schema: { type: 'integer' } } },
-      discovery: [{ name: 'custom', provides: ['count'], steps: [{ name: 'read', method: 'anotherRead', readOnly: true, params: [], capture: { count: { path: '' } } }] }],
+      discovery: [{ name: 'custom', provides: ['count'], steps: [{ name: 'read', method: 'anotherRead', params: [], capture: { count: { path: '' } } }] }],
     })
     let calls = 0
     await discoverFixtures(async () => { calls++; return { result: 7 } }, {}, spec.methods, spec)
@@ -196,9 +213,9 @@ describe('declarative compatibility definitions', () => {
   })
 
   it('runs discovery declared in YAML and rejects captured values with the wrong schema', async () => {
-    const { spec } = fixture({ readOnly: true, tests: [{ name: 'live', params: [{ $fixture: 'count' }] }] }, {
+    const { spec } = fixture({ tests: [{ name: 'live', params: [{ $fixture: 'count' }] }] }, {
       version: 1, fixtures: { count: { schema: { type: 'integer' } } },
-      discovery: [{ name: 'custom', provides: ['count'], steps: [{ name: 'read', method: 'newRead', readOnly: true, params: [7], capture: { count: { path: '/items/*', where: { type: 'number' }, offset: 1 } } }] }],
+      discovery: [{ name: 'custom', provides: ['count'], steps: [{ name: 'read', method: 'newRead', params: [7], capture: { count: { path: '/items/*', where: { type: 'number' }, offset: 1 } } }] }],
     })
     expect(checkCompatibility(spec)).toEqual([])
     const values = {}

@@ -41,9 +41,9 @@ describe('selection and coverage', () => {
     for (const name of ['getTransaction', 'getSignaturesForAddress']) expect(category(method(name))).toBe('Ledger')
     for (const name of ['sendTransaction', 'simulateTransaction']) expect(category({ ...method('getBlock'), name, yaml: { category: 'Transactions' } })).toBe('Transactions')
   })
-  it('requires an explicit read-only declaration before executing examples', () => {
-    for (const metadata of [undefined, { readOnly: false }]) {
-      const source = { ...method('getBalance'), yaml: { ...method('getBalance').yaml, readOnly: metadata?.readOnly } }
+  it('does not turn documentation examples into live tests', () => {
+    for (const tests of [undefined, []]) {
+      const source = { ...method('getBalance'), yaml: { ...method('getBalance').yaml, tests } }
       expect(probes(source, initialFixtures(spec), spec)[0].skip).toBeTruthy()
     }
   })

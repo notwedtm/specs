@@ -95,16 +95,7 @@ export function selectPath(value: any, pointer: string): any[] {
 
 export function caseSources(method: MethodSource): CaseSource[] {
   const metadata = method.yaml
-  if (metadata.readOnly !== true) return []
   const sources: CaseSource[] = []
-  if (metadata.testExamples ?? metadata.tests === undefined) {
-    for (const example of method.yaml.examples ?? []) {
-      const params = method.yaml.params ?? []
-      const supplied = new Map((example.params ?? []).map((p: any) => [p.name, p.value]))
-      const last = params.reduce((n: number, p: any, i: number) => supplied.has(p.name) ? i : n, -1)
-      sources.push({ name: `example/${example.name}`, params: params.slice(0, last + 1).map((p: any) => supplied.has(p.name) ? supplied.get(p.name) : null) })
-    }
-  }
   for (const source of metadata.tests ?? []) {
     let variants: Fixtures[] = [{}]
     for (const [key, values] of Object.entries<any[]>(source.matrix ?? {})) variants = variants.flatMap((v) => values.map((value) => ({ ...v, [key]: value })))
@@ -142,7 +133,7 @@ export function resolveProbe(source: CaseSource, fixtures: Fixtures, spec: SpecS
 
 export function probes(method: MethodSource, fixtures: Fixtures, spec: SpecSource): Probe[] {
   const sources = caseSources(method)
-  return sources.length ? sources.map((source) => resolveProbe(source, fixtures, spec)) : [{ name: 'coverage', params: [], skip: 'No read-only executable examples or cases declared in the method spec' }]
+  return sources.length ? sources.map((source) => resolveProbe(source, fixtures, spec)) : [{ name: 'coverage', params: [], skip: 'No tests declared in the method spec' }]
 }
 
 export function checkAssertions(result: any, assertions: Assertion[] = []): string | undefined {

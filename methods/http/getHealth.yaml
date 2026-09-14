@@ -23,4 +23,6 @@ implementations:
   superbank: { status: partial, notes: "ok iff a latest finalized slot resolves from ClickHouse; numSlotsBehind always null" }
 
 category: Cluster
-readOnly: true
+tests:
+  - name: healthy
+    params: []

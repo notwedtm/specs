@@ -42,14 +42,12 @@ discovery:
     steps:
       - name: finalized-tip
         method: getSlot
-        readOnly: true
         params: [{ commitment: finalized }]
         capture:
           tip: { path: '' }
           slot: { path: '', offset: -32 }
       - name: recent-block-slots
         method: getBlocks
-        readOnly: true
         params:
           - { $fixture: tip, offset: -64 }
           - { $fixture: tip, offset: -32 }
@@ -58,7 +56,6 @@ discovery:
           slot: { path: /0 }
       - name: recent-block
         method: getBlock
-        readOnly: true
         params:
           - { $fixture: slot, default: { $fixture: tip, offset: -32 } }
           - { encoding: jsonParsed, maxSupportedTransactionVersion: 0, rewards: false }

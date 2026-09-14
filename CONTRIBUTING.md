@@ -27,9 +27,9 @@
 
 ### Executable compatibility cases
 
-Declare a method's live tests in a top-level YAML `tests` list. Keep `category` and `readOnly` as separate method fields. Set `readOnly: true` only when the requests are safe to execute against a live endpoint. Each test has a `name`, `params`, and optional `expect`; successful responses always use the method's existing result schema. Omit `tests` to use existing examples as schema smoke tests, or set `tests: []` to disable them. Adding a method does not require a TypeScript adapter. See the [declaration format](tooling/compatibility.md#declare-tests-in-the-spec) for fixtures and optional setup.
+Declare a method's live tests in a top-level YAML `tests` list. Keep `category` as a separate method field. Each test has a `name`, `params`, and optional `expect`; successful responses always use the method's existing result schema. Omit `tests` or set `tests: []` to skip the method. Documentation examples never execute against live endpoints. Adding a method does not require a TypeScript adapter. See the [declaration format](tooling/compatibility.md#declare-tests-in-the-spec) for fixtures and optional setup.
 
-Put transaction history and status queries in `Ledger`. Reserve `Transactions` for `sendTransaction` and `simulateTransaction`. Do not enable transaction submission or airdrop examples as read-only tests. Keep private endpoints, credentials, and live fixture files outside this repository.
+Put transaction history and status queries in `Ledger`. Reserve `Transactions` for `sendTransaction` and `simulateTransaction`. Leave tests off transaction submission and airdrop methods. Review all test and discovery requests before running them against a live endpoint. Keep private endpoints, credentials, and live fixture files outside this repository.
 
 ### File format
 

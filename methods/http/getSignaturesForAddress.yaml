@@ -124,7 +124,6 @@ implementations:
   superbank: { status: full, notes: "default/max limit env-tunable (default 1000); vendor beforeSlot/untilSlot params not specced here" }
 
 category: Ledger
-readOnly: true
 tests:
   - name: limited-history
     params:

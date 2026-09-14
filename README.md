@@ -47,8 +47,8 @@ routers, codegen) should use it; humans should read `methods/`.
 | `x-notification` | `*Subscribe` methods | The `{name, schema}` of the notification the subscription pushes — OpenRPC has no native notion of a server-initiated message, so the subscribe method's own `result` is only the subscription id. |
 | `x-solana-errors` | document root | Map keyed by error **name** carrying `dataSchema`, `emittedBy`, and `description` for that error. |
 | `x-tests` | each method | Executable tests from the method YAML's `tests` list. |
-| `x-category`, `x-read-only` | each method | Separate category and read-only safety metadata. |
-| `x-test-setup`, `x-test-examples` | each method, when declared | Optional prerequisite calls and example-test selection. |
+| `x-category` | each method | Method category. |
+| `x-test-setup` | each method, when declared | Optional prerequisite calls. |
 | `x-test-config` | document root | Shared fixture definitions and discovery steps from `compatibility.yaml`. |
 
 `x-solana-errors` is a root-level map rather than fields on the errors
@@ -60,7 +60,7 @@ permits no `x-` extensions — so `components/errors/<Name>` is strictly
 
 ## Working locally
 
-To test a live RPC endpoint against this checkout, run `cd tooling && npm ci && npm run compat -- --help`. The runner reads method examples and executable test declarations from YAML. It selects the full spec, categories such as Accounts or Ledger, or individual methods. It produces text, JSON, and standalone HTML compatibility reports. See [Live RPC compatibility checks](tooling/compatibility.md) for test declarations, fixtures, coverage, and exit codes.
+To test a live RPC endpoint against this checkout, run `cd tooling && npm ci && npm run compat -- --help`. The runner executes explicit `tests` lists from method YAML; methods without tests are skipped. It selects the full spec, categories such as Accounts or Ledger, or individual methods. It produces text, JSON, and standalone HTML compatibility reports. See [Live RPC compatibility checks](tooling/compatibility.md) for test declarations, fixtures, coverage, and exit codes.
 
 ```bash
 cd tooling

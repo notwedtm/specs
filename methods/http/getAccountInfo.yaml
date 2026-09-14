@@ -68,7 +68,6 @@ implementations:
   superbank: { status: none }
 
 category: Accounts
-readOnly: true
 tests:
   - name: encoding
     params:

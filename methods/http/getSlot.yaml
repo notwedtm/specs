@@ -37,7 +37,6 @@ implementations:
   superbank: { status: partial, notes: "processed requires grpc-head-cache build + config; slot derived from ClickHouse" }
 
 category: Ledger
-readOnly: true
 tests:
   - name: default
     params: []

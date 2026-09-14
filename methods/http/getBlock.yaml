@@ -100,7 +100,6 @@ implementations:
   superbank: { status: partial, notes: "strict unknown-config-field rejection; processed n/a; served from ClickHouse" }
 
 category: Ledger
-readOnly: true
 tests:
   - name: details-none-rewards-true
     params:

@@ -37,7 +37,6 @@ implementations:
   superbank: { status: partial, notes: "processed requires grpc-head-cache; derived from stored blocks" }
 
 category: Ledger
-readOnly: true
 tests:
   - name: default
     params: []

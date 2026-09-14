@@ -100,7 +100,6 @@ implementations:
   superbank: { status: none }
 
 category: Tokens
-readOnly: true
 tests:
   - name: empty-owner
     params:

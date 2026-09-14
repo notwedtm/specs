@@ -20,7 +20,7 @@ export function buildDocument(spec: SpecSource, info: any): any {
       if (y.status) method['x-solana-status'] = y.status
       if (y.implementations) method['x-solana-implementations'] = y.implementations
       if (y.notification) method['x-notification'] = y.notification
-      for (const [source, extension] of Object.entries({ category: 'x-category', readOnly: 'x-read-only', tests: 'x-tests', testSetup: 'x-test-setup', testExamples: 'x-test-examples' })) {
+      for (const [source, extension] of Object.entries({ category: 'x-category', tests: 'x-tests', testSetup: 'x-test-setup' })) {
         if (Object.hasOwn(y, source)) method[extension] = y[source]
       }
       return method

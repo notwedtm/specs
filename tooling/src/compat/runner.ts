@@ -97,7 +97,7 @@ export class Evaluator {
 
 export async function discoverFixtures(call: Call, fixtures: Fixtures, selected: MethodSource[], spec: SpecSource, overrides: Fixtures = {}): Promise<string[]> {
   const notes: string[] = []
-  const wanted = new Set(selected.filter((m) => m.yaml.readOnly === true).flatMap((m) => [...fixtureReferences([m.yaml.tests, m.yaml.testSetup]), ...(m.yaml.tests ?? []).flatMap((c: any) => c.requires ?? [])]))
+  const wanted = new Set(selected.filter((m) => m.yaml.tests?.length).flatMap((m) => [...fixtureReferences([m.yaml.tests, m.yaml.testSetup]), ...(m.yaml.tests ?? []).flatMap((c: any) => c.requires ?? [])]))
   for (const group of spec.compatibility?.discovery ?? []) {
     if (!group.provides.some((name: string) => wanted.has(name) && !Object.hasOwn(fixtures, name))) continue
     let discovered = 0
@@ -143,8 +143,7 @@ export async function run(spec: SpecSource, selected: MethodSource[], options: R
   }
   const discovery = options.discover ? await discoverFixtures(http, fixtures, selected, spec, options.fixtures) : ['Automatic fixture discovery disabled']
   const record = (method: MethodSource, probe: string, result: Pick<Result, 'status' | 'detail'> & Partial<Result>) => {
-    const section = probe.startsWith('example/') ? 'examples' : 'tests'
-    const entry: Result = { method: method.name, category: category(method), transport: method.transport, probe, source: `methods/${method.transport}/${method.name}.yaml#${section}`, durationMs: 0, ...result }
+    const entry: Result = { method: method.name, category: category(method), transport: method.transport, probe, source: `methods/${method.transport}/${method.name}.yaml#tests`, durationMs: 0, ...result }
     results.push(entry)
     options.progress?.(entry)
   }
@@ -179,7 +178,7 @@ export async function run(spec: SpecSource, selected: MethodSource[], options: R
   }
   for (const method of selected) {
     const sources = caseSources(method)
-    if (!sources.length) { record(method, 'coverage', { status: 'skipped', detail: 'No read-only executable examples or cases declared in the method spec' }); continue }
+    if (!sources.length) { record(method, 'coverage', { status: 'skipped', detail: 'No tests declared in the method spec' }); continue }
     if (method.transport === 'websocket' && !options.wsEndpoint) { record(method, 'coverage', { status: 'skipped', detail: 'Provide --ws-endpoint to test WebSocket behavior' }); continue }
     const local = { ...fixtures }
     let socket: SocketTransport | undefined
@@ -209,8 +208,7 @@ export async function run(spec: SpecSource, selected: MethodSource[], options: R
     }, discovery,
     limitations: [
       'This is sampled schema and behavior coverage, not proof of full specification conformance.',
-      'Tests execute from method examples and tests lists in YAML. Methods without readOnly: true are skipped.',
-      'Example smoke tests validate response schemas, not the literal historical example result values.',
+      'Only explicit tests lists execute. Omitted or empty tests are skipped; documentation examples never execute.',
       'Only declared assertions execute; prose requirements are not automatically inferred.',
       'Setup calls may exercise prerequisites outside the selected scope and are labeled setup in the report.',
       'Error message text is checked only where a case declares a message. Declared error data schemas are validated.',

@@ -31,7 +31,8 @@ const help = `Usage: npm run compat -- [options]
 
 No selector means all methods in the checked-out spec. Categories and methods
 intersect when combined. Exit: 0 all probes pass, 1 incompatibility/unsupported,
-2 incomplete coverage or operational/configuration error. No writes or airdrops.
+2 incomplete coverage or operational/configuration error. Only declared tests
+execute; methods without tests are skipped.
 `
 
 async function main() {

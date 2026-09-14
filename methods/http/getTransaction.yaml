@@ -106,7 +106,6 @@ implementations:
   superbank: { status: partial, notes: "strict config-field rejection; extra non-standard slot param exists but is not part of this spec" }
 
 category: Ledger
-readOnly: true
 tests:
   - name: encoding-json
     params:

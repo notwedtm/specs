@@ -86,7 +86,6 @@ implementations:
   superbank: { status: none }
 
 category: Subscriptions
-readOnly: true
 tests:
   - name: subscribe
     params:

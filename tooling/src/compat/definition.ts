@@ -25,14 +25,11 @@ const caseSchema = {
   }, ['name']),
   oneOf: [{ required: ['params'], not: { anyOf: [{ required: ['observe'] }, { required: ['subscription'] }] } }, { required: ['observe', 'subscription'], not: { anyOf: [{ required: ['params'] }, { required: ['capture'] }] } }],
 }
-const metadataSchema = {
-  ...object({
-    category: { type: 'string', minLength: 1 }, readOnly: { type: 'boolean' }, testExamples: { type: 'boolean' },
-    tests: { type: 'array', maxItems: 1000, items: caseSchema },
-    testSetup: { type: 'array', maxItems: 100, items: object({ method: { type: 'string' }, params: { type: 'array' }, capture }, ['method', 'params']) },
-  }),
-  dependencies: { tests: ['readOnly'], testSetup: ['readOnly'], testExamples: ['readOnly'] },
-}
+const metadataSchema = object({
+  category: { type: 'string', minLength: 1 },
+  tests: { type: 'array', maxItems: 1000, items: caseSchema },
+  testSetup: { type: 'array', maxItems: 100, items: object({ method: { type: 'string' }, params: { type: 'array' }, capture }, ['method', 'params']) },
+})
 const suiteSchema = object({
   version: { const: 1 },
   fixtures: { type: 'object', propertyNames: identifier, additionalProperties: {
@@ -42,9 +39,9 @@ const suiteSchema = object({
   discovery: { type: 'array', items: object({
     name: { type: 'string', minLength: 1 }, provides: strings,
     steps: { type: 'array', maxItems: 100, items: object({
-      name: { type: 'string', minLength: 1 }, method: { type: 'string', minLength: 1 }, readOnly: { const: true }, params: { type: 'array' },
+      name: { type: 'string', minLength: 1 }, method: { type: 'string', minLength: 1 }, params: { type: 'array' },
       capture: { type: 'object', propertyNames: identifier, additionalProperties: object({ path: pointer, where: {}, field: pointer, offset: { type: 'integer' } }, ['path']) },
-    }, ['name', 'method', 'readOnly', 'params', 'capture']) },
+    }, ['name', 'method', 'params', 'capture']) },
   }, ['name', 'provides', 'steps']) },
 }, ['version', 'fixtures'])
 const ajv = new Ajv({ strict: false, allowUnionTypes: true, allErrors: true })
@@ -88,7 +85,7 @@ export function checkCompatibility(spec: SpecSource): string[] {
       const context = `discovery ${group.name}/${step.name}`
       templates(step.params, globalNames, new Set(), context)
       const method = spec.methods.find((m) => m.name === step.method)
-      if (method && (method.transport !== 'http' || method.yaml.readOnly !== true)) problems.push(`${context}: discovery requires a read-only HTTP method`)
+      if (method && (method.transport !== 'http' || !Array.isArray(method.yaml.tests) || !method.yaml.tests.length)) problems.push(`${context}: discovery requires an HTTP method with declared tests`)
       for (const [name, selection] of Object.entries<any>(step.capture)) {
         if (!globalNames.has(name)) problems.push(`${context}: capture names an undeclared fixture`)
         if (selection.where !== undefined) schemaCheck(selection.where, context)
@@ -97,13 +94,15 @@ export function checkCompatibility(spec: SpecSource): string[] {
   }
   for (const method of spec.methods) {
     const context = `${method.file}: tests`
-    if (Object.hasOwn(method.yaml, 'x-compatibility')) problems.push(`${context}: declare tests, category, and readOnly directly in the method YAML`)
+    for (const key of ['x-compatibility', 'readOnly', 'testExamples']) {
+      if (Object.hasOwn(method.yaml, key)) problems.push(`${context}: ${key} is not supported; declare executable requests in the tests list`)
+    }
     const metadata: any = Object.fromEntries(Object.keys(metadataSchema.properties).filter((key) => Object.hasOwn(method.yaml, key)).map((key) => [key, method.yaml[key]]))
     if (!validateMetadata(metadata as unknown)) { problems.push(`${context}: ${ajv.errorsText(validateMetadata.errors)}`); continue }
     const known = new Set(globalNames)
     for (const setup of metadata.testSetup ?? []) {
       const target = spec.methods.find((m) => m.name === setup.method)
-      if (!target || target.transport !== method.transport || target.yaml.readOnly !== true) problems.push(`${context}: setup must name a declared read-only method on the same transport`)
+      if (!target || target.transport !== method.transport || !Array.isArray(target.yaml.tests) || !target.yaml.tests.length) problems.push(`${context}: setup must name a method with declared tests on the same transport`)
       templates(setup.params, known, new Set(), context)
       for (const name of Object.keys(setup.capture ?? {})) known.add(name)
     }

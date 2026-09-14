@@ -99,7 +99,6 @@ implementations:
   superbank: { status: none }
 
 category: Accounts
-readOnly: true
 tests:
   - name: withContext-false
     params:
