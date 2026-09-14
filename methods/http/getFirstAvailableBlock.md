@@ -10,4 +10,5 @@ Returns the lowest slot for which the node can serve block data. The result is a
 
 ## Implementation notes
 
+- [**Agave**](../../implementations/agave.md): reference implementation. See the pinned [request handler](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L4327-L4330) and [processor](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L2034-L2044).
 - [**Superbank**](../../implementations/superbank.md): reports the oldest slot in ClickHouse block metadata. It returns `null` before any block metadata is available, although the standard result is a slot number.
