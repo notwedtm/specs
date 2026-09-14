@@ -29,6 +29,7 @@ result:
   summary: Identifier for this connection's subscription.
   schema: { $ref: '#/components/schemas/U64' }
 errors:
+  - $ref: '#/components/errors/MethodNotFound'
   - $ref: '#/components/errors/InvalidParams'
   - $ref: '#/components/errors/InternalError'
 examples:
