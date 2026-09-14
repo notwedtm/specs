@@ -57,6 +57,8 @@ permits no `x-` extensions — so `components/errors/<Name>` is strictly
 
 ## Working locally
 
+To test a live RPC endpoint against this checkout, run `cd tooling && npm ci && npm run compat -- --help`. The runner selects the full spec, categories such as Accounts or Ledger, or individual methods. It produces text, JSON, and standalone HTML compatibility reports. See [Live RPC compatibility checks](tooling/compatibility.md) for fixtures, coverage, and exit codes.
+
 ```bash
 cd tooling
 npm install
