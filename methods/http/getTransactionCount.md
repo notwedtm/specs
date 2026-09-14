@@ -11,4 +11,5 @@ Returns the cumulative number of transactions processed by the bank at the reque
 
 ## Implementation notes
 
+- [**Agave**](../../implementations/agave.md): reference implementation. See the pinned [request handler](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L2991-L2998) and [processor](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L1047-L1050).
 - [**Superbank**](../../implementations/superbank.md): derives the count from ClickHouse-stored blocks. It supports `confirmed` and `finalized`; `processed` requires the optional gRPC head cache. It rejects unknown config members with `InvalidParams`, while Agave ignores unknown serde fields.
