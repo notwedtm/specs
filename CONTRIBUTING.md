@@ -25,6 +25,14 @@
 
 ## Style
 
+### Executable compatibility cases
+
+Declare a method's live tests in its YAML `x-compatibility` block. Set `category` and explicitly set `readOnly: true` only when the requests are safe to execute against a live endpoint. The runner executes existing examples as schema smoke tests unless explicit `cases` replace them. Add fixture-backed cases, expected errors, and result assertions for behavior that examples do not cover. Adding a method does not require a TypeScript adapter. See the [declaration format](tooling/compatibility.md#declare-tests-in-the-spec).
+
+Put transaction history and status queries in `Ledger`. Reserve `Transactions` for `sendTransaction` and `simulateTransaction`. Do not enable transaction submission or airdrop examples as read-only tests. Keep private endpoints, credentials, and live fixture files outside this repository.
+
+### File format
+
 - YAML: 2-space indent. Schema files are PascalCase; method files are the
   exact wire method name.
 - JSON Schema: draft-07 subset (OpenRPC 1.2.6). Use `items: [a, b]` tuple

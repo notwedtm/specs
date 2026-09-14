@@ -20,6 +20,7 @@ export function buildDocument(spec: SpecSource, info: any): any {
       if (y.status) method['x-solana-status'] = y.status
       if (y.implementations) method['x-solana-implementations'] = y.implementations
       if (y.notification) method['x-notification'] = y.notification
+      if (y['x-compatibility']) method['x-compatibility'] = y['x-compatibility']
       return method
     })
 
@@ -48,6 +49,7 @@ export function buildDocument(spec: SpecSource, info: any): any {
     },
     methods,
     components: { schemas: spec.schemas, errors },
+    ...(spec.compatibility ? { 'x-compatibility': spec.compatibility } : {}),
     ...(Object.keys(errorExtensions).length > 0
       ? { 'x-solana-errors': errorExtensions }
       : {}),

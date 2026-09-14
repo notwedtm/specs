@@ -3,10 +3,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { parse } from 'yaml'
-import { compileWithComponents } from '../examples.js'
 import { loadSpec } from '../loader.js'
 import { validateSpec } from '../validate.js'
-import { category, selectMethods, type Fixtures } from './cases.js'
+import { category, selectMethods, validateFixtureValues, type Fixtures } from './cases.js'
 import { exitCode, run } from './runner.js'
 import { htmlReport, textReport } from './report.js'
 
@@ -14,8 +13,7 @@ const help = `Usage: npm run compat -- [options]
 
   --endpoint URL          HTTP RPC URL (or RPC_ENDPOINT environment variable)
   --ws-endpoint URL       WebSocket URL (or RPC_WS_ENDPOINT); never inferred
-  --category NAME         Repeat or comma-separate: Accounts, Tokens, Ledger,
-                          Transactions, Cluster, Subscriptions, Other
+  --category NAME         Repeat or comma-separate categories from method YAML
   --method NAME           Repeat or comma-separate exact RPC method names
   --list                  List selected methods and categories without network calls
   --label NAME            Report label, default "target"; avoid private addresses
@@ -27,7 +25,7 @@ const help = `Usage: npm run compat -- [options]
   --timeout MS            Per-request deadline, default 10000
   --delay MS              Delay before each HTTP call, default 100
   --max-bytes N           Response size limit, default 16777216
-  --notification-wait MS  Observe account notifications, default 3000
+  --notification-wait MS  Observe declared notifications, default 3000
   --root PATH            Spec checkout root (default this repository)
   --help                  Show this help
 
@@ -79,11 +77,7 @@ async function main() {
   let fixtures: Partial<Fixtures> | undefined
   if (values.fixtures) {
     try { fixtures = JSON.parse(fs.readFileSync(values.fixtures, 'utf8')) } catch { throw new Error('Cannot read fixtures as JSON') }
-    const fixtureSchema = {
-      type: 'object', additionalProperties: false,
-      properties: Object.fromEntries(Object.entries({ account: 'Pubkey', missingAccount: 'Pubkey', missingSignature: 'Signature', slot: 'Slot', signature: 'Signature', address: 'Pubkey', tokenOwner: 'Pubkey', tokenMint: 'Pubkey', tokenProgram: 'Pubkey' }).map(([key, component]) => [key, { $ref: `#/components/schemas/${component}` }])),
-    }
-    if (!compileWithComponents(fixtureSchema, spec.schemas)(fixtures) || (fixtures?.slot !== undefined && !Number.isSafeInteger(fixtures.slot))) throw new Error('Invalid fixture fields; see compatibility.md')
+    if (!fixtures || Array.isArray(fixtures) || typeof fixtures !== 'object' || validateFixtureValues(spec, fixtures).length) throw new Error('Invalid fixture fields; see compatibility.md')
   }
   const report = await run(spec, selected, {
     endpoint: endpoint!, wsEndpoint, headers, label: values.label,

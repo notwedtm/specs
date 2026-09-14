@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto'
 import type { ValidateFunction } from 'ajv'
 import type { MethodSource, SpecSource } from '../loader.js'
 import { compileWithComponents } from '../examples.js'
-import { category, CLOCK, initialFixtures, probes, type Fixtures, type Probe } from './cases.js'
+import { category, caseSources, checkAssertions, fixtureReferences, initialFixtures, MissingFixture, resolveProbe, resolveTemplate, selectPath, validateFixtureValues, type Fixtures, type Probe } from './cases.js'
+import { checkCompatibility, requestIssue } from './definition.js'
 import { httpTransport, ProtocolError, SocketTransport, type Call, type TransportOptions } from './transport.js'
 
 export type Status = 'pass' | 'fail' | 'unsupported' | 'inconclusive' | 'error' | 'skipped'
@@ -36,7 +37,7 @@ export interface RunOptions extends TransportOptions {
   label: string
   version: string
   discover: boolean
-  fixtures?: Partial<Fixtures>
+  fixtures?: Fixtures
   delay: number
   notificationWait: number
   progress?: (result: Result) => void
@@ -50,8 +51,9 @@ export class Evaluator {
   constructor(private spec: SpecSource) {}
 
   validate(key: string, schema: any, value: unknown): string | undefined {
-    let validate = this.validators.get(key)
-    if (!validate) { validate = compileWithComponents(schema, this.spec.schemas); this.validators.set(key, validate) }
+    const cacheKey = key + JSON.stringify(schema)
+    let validate = this.validators.get(cacheKey)
+    if (!validate) { validate = compileWithComponents(schema, this.spec.schemas); this.validators.set(cacheKey, validate) }
     if (validate(value)) return
     return (validate.errors ?? []).slice(0, 4).map((e) => `${e.instancePath || '/'} ${e.message}`).join('; ')
   }
@@ -61,9 +63,8 @@ export class Evaluator {
       const { code } = response.error
       const allowed = (method.yaml.errors ?? []).map((ref: any) => this.spec.errors[ref.$ref.split('/').pop()])
       const definition = allowed.find((e: any) => e?.code === code)
-      const errorSchema = definition?.data
-      if (errorSchema) {
-        const issue = this.validate(`error-${code}`, errorSchema, response.error.data)
+      if (definition?.data !== undefined) {
+        const issue = this.validate(`error-${code}`, definition.data, response.error.data)
         if (issue) return { status: 'fail', code, detail: `Error data violates spec: ${issue}` }
       }
       if (code === -32601) return { status: 'unsupported', code, detail: 'Method not found' }
@@ -77,52 +78,62 @@ export class Evaluator {
       return { status: 'fail', code, detail: probe.error === undefined ? 'Unexpected error for a valid probe' : `Expected error ${probe.error}` }
     }
     if (probe.error !== undefined) return { status: 'fail', detail: `Expected error ${probe.error}, received success` }
-    const issue = this.validate(method.name, method.yaml.result.schema, response.result)
+    const schema = probe.observe ? method.yaml.notification.schema : method.yaml.result.schema
+    const issue = this.validate(method.name, schema, response.result)
     if (issue) return { status: 'fail', detail: `Result schema: ${issue}` }
-    const shapeIssue = probe.shape?.(response.result)
-    if (shapeIssue) return { status: 'fail', detail: shapeIssue }
-    if (probe.nonempty && !probe.nonempty(response.result)) return { status: 'inconclusive', detail: 'Required live data is absent; schema matches but behavior is untested' }
-    const semanticIssue = probe.check?.(response.result)
-    return semanticIssue ? { status: 'fail', detail: semanticIssue } : { status: 'pass', detail: 'Result schema and probe assertions match' }
+    if (probe.shapeSchema !== undefined) {
+      const shapeIssue = this.validate('shape', probe.shapeSchema, response.result)
+      if (shapeIssue) return { status: 'fail', detail: `Result shape: ${shapeIssue}` }
+    }
+    if (probe.availableSchema !== undefined && this.validate('available', probe.availableSchema, response.result)) return { status: 'inconclusive', detail: 'Required live data is absent; schema matches but behavior is untested' }
+    if (probe.resultSchema !== undefined) {
+      const resultIssue = this.validate('assertion', probe.resultSchema, response.result)
+      if (resultIssue) return { status: 'fail', detail: `Result assertion: ${resultIssue}` }
+    }
+    const assertion = checkAssertions(response.result, probe.assertions)
+    return assertion ? { status: 'fail', detail: assertion } : { status: 'pass', detail: 'Result schema and declared assertions match' }
   }
 }
 
-export async function discoverFixtures(call: Call, fixtures: Fixtures, selected: MethodSource[]): Promise<string[]> {
+export async function discoverFixtures(call: Call, fixtures: Fixtures, selected: MethodSource[], spec: SpecSource, overrides: Fixtures = {}): Promise<string[]> {
   const notes: string[] = []
-  if (!selected.some((m) => ['getBlock', 'getTransaction', 'getSignaturesForAddress', 'getTokenAccountsByOwner'].includes(m.name))) return notes
-  const read = async (method: string, params: unknown[]) => {
-    try { return (await call(method, params) as any).result }
-    catch { return undefined }
-  }
-  if (fixtures.slot === undefined) {
-    const slot = await read('getSlot', [{ commitment: 'finalized' }])
-    if (Number.isSafeInteger(slot) && slot > 64) {
-      const blocks = await read('getBlocks', [slot - 64, slot - 32, { commitment: 'finalized' }])
-      const candidate = Array.isArray(blocks) ? blocks.find((b) => Number.isSafeInteger(b) && b >= slot - 64 && b <= slot - 32) : slot - 32
-      if (Number.isSafeInteger(candidate)) fixtures.slot = candidate
+  const wanted = new Set(selected.filter((m) => m.yaml['x-compatibility']?.readOnly === true).flatMap((m) => [...fixtureReferences(m.yaml['x-compatibility']), ...(m.yaml['x-compatibility']?.cases ?? []).flatMap((c: any) => c.requires ?? [])]))
+  for (const group of spec.compatibility?.discovery ?? []) {
+    if (!group.provides.some((name: string) => wanted.has(name) && !Object.hasOwn(fixtures, name))) continue
+    let discovered = 0
+    for (const step of group.steps) {
+      try {
+        const params = resolveTemplate(step.params, fixtures)
+        const target = spec.methods.find((m) => m.name === step.method)
+        if (target && requestIssue(target, { name: step.name, params }, spec)) { notes.push(`Discovery ${group.name}/${step.name}: invalid setup parameters`); continue }
+        const response: any = await call(step.method, params)
+        if (!Object.hasOwn(response, 'result')) { notes.push(`Discovery ${group.name}/${step.name}: no result`); continue }
+        for (const [name, selection] of Object.entries<any>(step.capture)) {
+          if (Object.hasOwn(overrides, name)) continue
+          const candidates = selectPath(response.result, selection.path)
+          const validate = selection.where === undefined ? undefined : compileWithComponents(selection.where, spec.schemas)
+          const filtered = validate ? candidates.filter((value) => validate(value)) : candidates
+          let value = filtered[0]
+          if (selection.field !== undefined) value = selectPath(value, selection.field)[0]
+          if (selection.offset !== undefined) value = typeof value === 'number' ? value + selection.offset : undefined
+          if (value === undefined || validateFixtureValues(spec, { [name]: value }).length) continue
+          fixtures[name] = value
+          discovered++
+        }
+      } catch (error) {
+        notes.push(`Discovery ${group.name}/${step.name}: ${error instanceof MissingFixture ? 'missing prerequisite fixture' : 'request unavailable'}`)
+      }
     }
+    notes.push(`Discovery ${group.name}: captured ${discovered} fixture values`)
   }
-  if (fixtures.slot !== undefined) {
-    const block = await read('getBlock', [fixtures.slot, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0, rewards: false }])
-    if (Array.isArray(block?.transactions)) {
-      const tx = block.transactions.find((t: any) => t.transaction?.signatures?.length)
-      fixtures.signature ??= tx?.transaction.signatures[0]
-      const address = tx?.transaction.message?.accountKeys?.[0]
-      fixtures.address ??= typeof address === 'string' ? address : address?.pubkey
-      const token = block.transactions.flatMap((t: any) => t.meta?.postTokenBalances ?? []).find((t: any) => t.owner && t.mint && t.programId)
-      fixtures.tokenOwner ??= token?.owner
-      fixtures.tokenMint ??= token?.mint
-      fixtures.tokenProgram ??= token?.programId
-      notes.push('Recent ledger fixtures discovered from this target')
-    } else notes.push('Recent block discovery unavailable; ledger probes may be inconclusive')
-  } else notes.push('No slot discovered; supply a slot fixture for ledger coverage')
-  if (!fixtures.tokenOwner) notes.push('No token owner discovered; populated token queries need a fixture')
   return notes
 }
 
 export async function run(spec: SpecSource, selected: MethodSource[], options: RunOptions): Promise<Report> {
+  const problems = [...checkCompatibility(spec), ...validateFixtureValues(spec, options.fixtures ?? {})]
+  if (problems.length) throw new Error(`Invalid compatibility definitions: ${problems.join('; ')}`)
   const started = Date.now()
-  const fixtures = { ...initialFixtures(), ...options.fixtures }
+  const fixtures = { ...initialFixtures(spec), ...options.fixtures }
   const results: Result[] = []
   const evaluator = new Evaluator(spec)
   const baseCall = httpTransport(options.endpoint, options)
@@ -130,94 +141,78 @@ export async function run(spec: SpecSource, selected: MethodSource[], options: R
     if (options.delay) await new Promise((resolve) => setTimeout(resolve, options.delay))
     return baseCall(method, params)
   }
-  const discovery = options.discover ? await discoverFixtures(http, fixtures, selected) : ['Automatic fixture discovery disabled']
+  const discovery = options.discover ? await discoverFixtures(http, fixtures, selected, spec, options.fixtures) : ['Automatic fixture discovery disabled']
   const record = (method: MethodSource, probe: string, result: Pick<Result, 'status' | 'detail'> & Partial<Result>) => {
-    const entry: Result = {
-      method: method.name, category: category(method), transport: method.transport, probe,
-      source: `methods/${method.transport}/${method.name}.md`, durationMs: 0, ...result,
-    }
+    const entry: Result = { method: method.name, category: category(method), transport: method.transport, probe, source: `methods/${method.transport}/${method.name}.yaml#x-compatibility`, durationMs: 0, ...result }
     results.push(entry)
     options.progress?.(entry)
   }
-  const execute = async (method: MethodSource, probe: Probe, call: Call): Promise<any> => {
+  const execute = async (method: MethodSource, probe: Probe, call: Call, local: Fixtures, socket?: SocketTransport): Promise<void> => {
     if (probe.skip) { record(method, probe.name, { status: 'skipped', detail: probe.skip }); return }
     const start = Date.now()
     try {
-      const response = await call(method.name, probe.params)
-      record(method, probe.name, { ...evaluator.evaluate(method, probe, response), durationMs: Date.now() - start })
-      return response
+      const requestProblem = requestIssue(method, probe, spec)
+      if (requestProblem) { record(method, probe.name, { status: 'error', detail: requestProblem }); return }
+      if (probe.observe) {
+        const messages: any[] = await socket!.observe(options.notificationWait)
+        if (!messages.length) { record(method, probe.name, { status: 'inconclusive', detail: 'No notification observed during the bounded window', durationMs: Date.now() - start }); return }
+        const evaluated = messages.map((message) => {
+          if (message?.jsonrpc !== '2.0' || message.method !== method.yaml.notification.name || Object.hasOwn(message, 'id') || message.params?.subscription !== probe.subscription) return { status: 'fail' as const, detail: 'Invalid notification envelope or subscription id' }
+          return evaluator.evaluate(method, probe, { result: message.params })
+        })
+        record(method, probe.name, { ...(evaluated.find((r) => r.status !== 'pass') ?? evaluated[0]), durationMs: Date.now() - start })
+      } else {
+        const response: any = await call(method.name, probe.params)
+        const evaluated = evaluator.evaluate(method, probe, response)
+        record(method, probe.name, { ...evaluated, durationMs: Date.now() - start })
+        if (evaluated.status === 'pass' && Object.hasOwn(response, 'result')) {
+          for (const [name, pointer] of Object.entries(probe.capture ?? {})) {
+            const value = selectPath(response.result, pointer)[0]
+            if (value !== undefined) local[name] = value
+          }
+        }
+      }
     } catch (error) {
       record(method, probe.name, { status: error instanceof ProtocolError ? 'fail' : 'error', detail: safeError(error), durationMs: Date.now() - start })
     }
   }
-  for (const method of selected.filter((m) => m.transport === 'http')) {
-    for (const probe of probes(method, fixtures)) await execute(method, probe, http)
-  }
-
-  const wsMethods = selected.filter((m) => m.transport === 'websocket')
-  if (wsMethods.length && !options.wsEndpoint) {
-    for (const method of wsMethods) record(method, 'coverage', { status: 'skipped', detail: 'Provide --ws-endpoint to test WebSocket behavior' })
-  } else if (wsMethods.length) {
-    const socket = new SocketTransport(options.wsEndpoint!, options)
+  for (const method of selected) {
+    const sources = caseSources(method)
+    if (!sources.length) { record(method, 'coverage', { status: 'skipped', detail: 'No read-only executable examples or cases declared in the method spec' }); continue }
+    if (method.transport === 'websocket' && !options.wsEndpoint) { record(method, 'coverage', { status: 'skipped', detail: 'Provide --ws-endpoint to test WebSocket behavior' }); continue }
+    const local = { ...fixtures }
+    let socket: SocketTransport | undefined
     try {
-      await socket.open()
-      const subscribe = spec.methods.find((m) => m.name === 'accountSubscribe')
-      const unsubscribe = spec.methods.find((m) => m.name === 'accountUnsubscribe')
-      const testSubscribe = wsMethods.some((m) => m.name === 'accountSubscribe')
-      const testUnsubscribe = wsMethods.some((m) => m.name === 'accountUnsubscribe')
-      for (const method of wsMethods.filter((m) => !['accountSubscribe', 'accountUnsubscribe'].includes(m.name))) record(method, 'coverage', { status: 'skipped', detail: 'No live WebSocket adapter for this method' })
-      if ((testSubscribe || testUnsubscribe) && subscribe && unsubscribe) {
-        const params = [CLOCK, { encoding: 'base64', commitment: 'processed', dataSlice: { offset: 0, length: 0 }, minContextSlot: Number.MAX_SAFE_INTEGER }]
-        const response: any = testSubscribe
-          ? await execute(subscribe, { name: 'subscribe', params }, socket.call)
-          : await socket.call(subscribe.name, params)
-        const id = response?.result
-        if (Number.isSafeInteger(id) && id >= 0) {
-          if (testSubscribe) {
-            await execute(subscribe, { name: 'deduplication', params, check: (r) => r === id ? undefined : 'Identical subscription must return the same id' }, socket.call)
-            const notifications: any[] = await socket.observe(options.notificationWait)
-            if (!notifications.length) record(subscribe, 'notification', { status: 'inconclusive', detail: 'No account notification observed during the bounded window' })
-            else {
-              const issue = notifications.map((n) => {
-                if (n?.jsonrpc !== '2.0' || n.method !== subscribe.yaml.notification.name || Object.hasOwn(n, 'id') || n.params?.subscription !== id) return 'Invalid notification envelope or subscription id'
-                const schemaIssue = evaluator.validate('accountNotification', subscribe.yaml.notification.schema, n.params)
-                if (schemaIssue) return `Notification schema: ${schemaIssue}`
-                const data = n.params.result.value.data
-                if (!Array.isArray(data) || data[1] !== 'base64' || Buffer.from(data[0], 'base64').length !== 40) return 'Clock notification must contain full base64 data; dataSlice is ignored'
-              }).find(Boolean)
-              record(subscribe, 'notification', { status: issue ? 'fail' : 'pass', detail: issue ?? 'Notification schema, subscription id, encoding, and unsliced data match' })
-            }
-            await execute(subscribe, { name: 'invalid-pubkey', params: ['bad!'], error: -32602 }, socket.call)
-          }
-          if (testUnsubscribe) {
-            await execute(unsubscribe, { name: 'unsubscribe', params: [id], check: (r) => r === true ? undefined : 'Unsubscribe must return true' }, socket.call)
-            await execute(unsubscribe, { name: 'unknown-id', params: [id], error: -32602, message: 'Invalid subscription id.' }, socket.call)
-          }
-        } else if (testUnsubscribe) record(unsubscribe, 'unsubscribe', { status: 'inconclusive', detail: 'Could not establish prerequisite subscription' })
-      } else {
-        for (const method of wsMethods.filter((m) => ['accountSubscribe', 'accountUnsubscribe'].includes(m.name))) record(method, 'coverage', { status: 'skipped', detail: 'Spec must contain both accountSubscribe and accountUnsubscribe' })
+      if (method.transport === 'websocket') { socket = new SocketTransport(options.wsEndpoint!, options); await socket.open() }
+      const call = socket?.call ?? http
+      for (const setup of method.yaml['x-compatibility']?.setup ?? []) {
+        const target = spec.methods.find((m) => m.name === setup.method)!
+        const probe = resolveProbe({ name: `setup/${method.name}/${setup.method}`, params: setup.params, capture: setup.capture }, local, spec)
+        await execute(target, probe, call, local, socket)
       }
+      for (const source of sources) await execute(method, resolveProbe(source, local, spec), call, local, socket)
     } catch (error) {
-      for (const method of wsMethods) record(method, 'websocket-session', { status: error instanceof ProtocolError ? 'fail' : 'error', detail: safeError(error) })
-    } finally { socket.close() }
+      record(method, 'session', { status: error instanceof ProtocolError ? 'fail' : 'error', detail: safeError(error) })
+    } finally { socket?.close() }
   }
   const summary: Record<Status, number> = { pass: 0, fail: 0, unsupported: 0, inconclusive: 0, error: 0, skipped: 0 }
   for (const result of results) summary[result.status]++
   return {
     formatVersion: 1, target: options.label, startedAt: new Date(started).toISOString(), durationMs: Date.now() - started,
-    spec: { version: options.version, sha256: createHash('sha256').update(JSON.stringify({ methods: spec.methods.map((m) => ({ name: m.name, transport: m.transport, yaml: m.yaml, md: m.md })), schemas: spec.schemas, errors: spec.errors })).digest('hex') },
+    spec: { version: options.version, sha256: createHash('sha256').update(JSON.stringify({ compatibility: spec.compatibility, methods: spec.methods.map((m) => ({ name: m.name, transport: m.transport, yaml: m.yaml, md: m.md })), schemas: spec.schemas, errors: spec.errors })).digest('hex') },
     scope: selected.map((m) => m.name), summary,
     coverage: {
       selectedMethods: selected.length,
-      methodsWithPass: new Set(results.filter((r) => r.status === 'pass').map((r) => r.method)).size,
-      methodsWithGaps: new Set(results.filter((r) => ['skipped', 'inconclusive', 'error'].includes(r.status)).map((r) => r.method)).size,
-    },
-    discovery,
+      methodsWithPass: new Set(results.filter((r) => r.status === 'pass' && selected.some((m) => m.name === r.method)).map((r) => r.method)).size,
+      methodsWithGaps: new Set(results.filter((r) => ['skipped', 'inconclusive', 'error'].includes(r.status) && selected.some((m) => m.name === r.method)).map((r) => r.method)).size,
+    }, discovery,
     limitations: [
       'This is sampled schema and behavior coverage, not proof of full specification conformance.',
-      'Only explicitly implemented probes execute. New methods appear as skipped until an adapter is added.',
-      'Forks, retention boundaries, every error path, transaction version gating, and all filter combinations are not exhaustively tested.',
-      'Error message text is checked only where a probe declares a normative message. Server error data is checked when the spec declares its schema.',
+      'Tests execute from method examples and x-compatibility metadata. Methods without readOnly: true are skipped.',
+      'Example smoke tests validate response schemas, not the literal historical example result values.',
+      'Only declared assertions execute; prose requirements are not automatically inferred.',
+      'Setup calls may exercise prerequisites outside the selected scope and are labeled setup in the report.',
+      'Error message text is checked only where a case declares a message. Declared error data schemas are validated.',
       'JSON numbers use JavaScript number precision; integers above 2^53 cannot be compared exactly.',
       'Reports omit endpoint URLs, headers, request fixtures, raw responses, and server error text. Target labels are user supplied.',
     ], results,

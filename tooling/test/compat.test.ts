@@ -38,17 +38,19 @@ describe('selection and coverage', () => {
     expect(() => selectMethods(spec.methods, [], ['getbalance'])).toThrow('Unknown method')
   })
   it('puts transaction reads in Ledger and keeps submission and simulation in Transactions', () => {
-    for (const name of ['getTransaction', 'getSignaturesForAddress', 'getSignatureStatuses', 'getTransactionCount', 'getTransactionSlot', 'getTransactionsForAddress']) expect(category({ ...method('getBlock'), name })).toBe('Ledger')
-    for (const name of ['sendTransaction', 'simulateTransaction']) expect(category({ ...method('getBlock'), name })).toBe('Transactions')
+    for (const name of ['getTransaction', 'getSignaturesForAddress']) expect(category(method(name))).toBe('Ledger')
+    for (const name of ['sendTransaction', 'simulateTransaction']) expect(category({ ...method('getBlock'), name, yaml: { 'x-compatibility': { category: 'Transactions' } } })).toBe('Transactions')
   })
-  it('never executes an unknown or mutating method through an example fallback', () => {
-    expect(probes({ ...method('getBalance'), name: 'sendTransaction' }, initialFixtures())[0].skip).toBeTruthy()
-    expect(probes({ ...method('getBalance'), name: 'newMethod' }, initialFixtures())[0].skip).toBeTruthy()
+  it('requires an explicit read-only declaration before executing examples', () => {
+    for (const metadata of [undefined, { readOnly: false }]) {
+      const source = { ...method('getBalance'), yaml: { ...method('getBalance').yaml, 'x-compatibility': metadata } }
+      expect(probes(source, initialFixtures(spec), spec)[0].skip).toBeTruthy()
+    }
   })
   it('bounds program-account probes and marks unavailable ledger fixtures', () => {
-    const fixtures = initialFixtures()
-    for (const probe of probes(method('getProgramAccounts'), fixtures).filter((p) => p.error === undefined)) expect((probe.params[1] as any).filters.length).toBeGreaterThan(0)
-    expect(probes(method('getTransaction'), fixtures).filter((p) => p.name.startsWith('encoding')).every((p) => p.skip)).toBe(true)
+    const fixtures = initialFixtures(spec)
+    for (const probe of probes(method('getProgramAccounts'), fixtures, spec).filter((p) => p.error === undefined)) expect((probe.params[1] as any).filters.length).toBeGreaterThan(0)
+    expect(probes(method('getTransaction'), fixtures, spec).filter((p) => p.name.startsWith('encoding')).every((p) => p.skip)).toBe(true)
   })
 })
 
@@ -73,22 +75,22 @@ describe('spec-based evaluation', () => {
     expect(evaluate('getSlot', {}, { error: { code: -32011, message: 'no history' } }).status).toBe('fail')
     expect(evaluate('getSlot', {}, { error: { code: -32603, message: 'internal' } }).status).toBe('error')
     expect(evaluate('getSlot', { error: -32602 }, { result: 42 }).status).toBe('fail')
-    expect(evaluate('getTransaction', { nonempty: (r: any) => r !== null }, { result: null }).status).toBe('inconclusive')
+    expect(evaluate('getTransaction', { availableSchema: { not: { type: 'null' } } }, { result: null }).status).toBe('inconclusive')
   })
   it('catches request-dependent encoding and block-shape mismatches accepted by broad schemas', () => {
-    const fixture = initialFixtures()
-    const accountProbe = probes(method('getAccountInfo'), fixture).find((p) => p.name === 'encoding-base64')!
+    const fixture = initialFixtures(spec)
+    const accountProbe = probes(method('getAccountInfo'), fixture, spec).find((p) => p.name === 'encoding-base64')!
     const value = structuredClone(method('getAccountInfo').yaml.examples[0].result.value)
     expect(evaluate('getAccountInfo', accountProbe, { result: value }).status).toBe('fail')
-    const blockProbe = probes(method('getBlock'), { ...fixture, slot: 430 }).find((p) => p.name === 'details-none-rewards-false')!
+    const blockProbe = probes(method('getBlock'), { ...fixture, slot: 430 }, spec).find((p) => p.name === 'details-none-rewards-false')!
     const block = structuredClone(method('getBlock').yaml.examples[0].result.value)
     expect(evaluate('getBlock', blockProbe, { result: block }).status).toBe('fail')
   })
   it('does not hide wrong empty response shapes behind a data gap', () => {
-    const fixture = initialFixtures()
-    const gpa = probes(method('getProgramAccounts'), fixture).find((p) => p.name === 'withContext-true')!
+    const fixture = initialFixtures(spec)
+    const gpa = probes(method('getProgramAccounts'), fixture, spec).find((p) => p.name === 'withContext-true')!
     expect(evaluate('getProgramAccounts', gpa, { result: [] }).status).toBe('fail')
-    const multiple = probes(method('getMultipleAccounts'), fixture)[0]
+    const multiple = probes(method('getMultipleAccounts'), fixture, spec)[0]
     expect(evaluate('getMultipleAccounts', multiple, { result: { context: { slot: 1 }, value: [] } }).status).toBe('fail')
   })
 })
@@ -140,18 +142,19 @@ describe('HTTP and JSON-RPC transport', () => {
 
 describe('discovery and reports', () => {
   it('discovers chain-local fixtures and preserves overrides', async () => {
-    const fixtures = { ...initialFixtures(), signature: 'override' }
+    const defaults = initialFixtures(spec)
+    const fixtures = { ...defaults, signature: defaults.missingSignature }
     const calls: string[] = []
     await discoverFixtures(async (name) => {
       calls.push(name)
-      return { result: name === 'getSlot' ? 100 : name === 'getBlocks' ? [50] : { transactions: [{ transaction: { signatures: ['discovered'], message: { accountKeys: [{ pubkey: 'address' }] } }, meta: { postTokenBalances: [{ owner: 'owner', mint: 'mint', programId: 'program' }] } }] } }
-    }, fixtures, [method('getTransaction')])
+      return { result: name === 'getSlot' ? 100 : name === 'getBlocks' ? [50] : { transactions: [{ transaction: { signatures: [defaults.missingSignature], message: { accountKeys: [{ pubkey: defaults.clock }] } }, meta: { postTokenBalances: [{ owner: defaults.clock, mint: defaults.nativeMint, programId: defaults.tokenProgram }] } }] } }
+    }, fixtures, [method('getTransaction'), method('getBlock')], spec, { signature: defaults.missingSignature })
     expect(calls).toEqual(['getSlot', 'getBlocks', 'getBlock'])
-    expect(fixtures).toMatchObject({ slot: 50, signature: 'override', address: 'address', tokenOwner: 'owner' })
+    expect(fixtures).toMatchObject({ slot: 50, signature: defaults.missingSignature, address: defaults.clock, tokenOwner: defaults.clock })
   })
   it('does no unrelated discovery for Accounts-only runs', async () => {
     let calls = 0
-    await discoverFixtures(async () => { calls++; return {} }, initialFixtures(), [method('getBalance')])
+    await discoverFixtures(async () => { calls++; return {} }, initialFixtures(spec), [method('getBalance')], spec)
     expect(calls).toBe(0)
   })
   it('omits endpoints, headers, raw responses and server messages in every report format', async () => {
@@ -181,7 +184,7 @@ describe('WebSocket lifecycle', () => {
     cleanup.push(() => new Promise<void>((resolve) => { for (const c of app.clients) c.terminate(); app.close(() => resolve()) }))
     return `ws://127.0.0.1:${(app.address() as any).port}`
   }
-  it('tests deduplication, notifications, unsubscribe, and invalid ids on one session', async () => {
+  it('executes declared WebSocket setup, captures, notifications, and unsubscribe cases', async () => {
     let active = false
     const wsEndpoint = await socketServer((socket, body) => {
       let response: any
@@ -197,7 +200,7 @@ describe('WebSocket lifecycle', () => {
       socket.send(JSON.stringify({ jsonrpc: '2.0', id: body.id, ...response }))
     })
     const report = await run(spec, [method('accountSubscribe'), method('accountUnsubscribe')], { ...options, wsEndpoint })
-    expect(report.summary).toMatchObject({ pass: 6, fail: 0, error: 0, skipped: 0, inconclusive: 0 })
+    expect(report.summary).toMatchObject({ pass: 7, fail: 0, error: 0, skipped: 0, inconclusive: 0 })
     expect(exitCode(report)).toBe(0)
   })
   it('rejects mismatched ids without hanging', async () => {

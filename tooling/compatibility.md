@@ -1,6 +1,6 @@
 # Live RPC compatibility checks
 
-The runner checks a live endpoint against the YAML schemas and selected behaviors in this spec checkout. It uses the spec as the authority. Implementation support notes do not change expectations. It does not compare endpoints or require their slots, balances, or transaction history to match.
+The runner reads method files, examples, and `x-compatibility` test declarations from this spec checkout. It executes those requests and checks responses against the method schemas and declared assertions. Method names, categories, fixtures, discovery calls, and behavior expectations come from YAML, not method-specific TypeScript adapters. Implementation support notes do not change expectations. It does not compare endpoints or require their slots, balances, or transaction history to match.
 
 Use Node.js 20 or later. From `tooling/`:
 
@@ -43,7 +43,7 @@ Category names are case-insensitive. Method names match wire names exactly. Repe
 | Subscriptions | WebSocket methods |
 | Other | Methods without a category assignment |
 
-The selection always comes from the loaded spec. A method with no live adapter appears as **skipped**, including methods added to the spec later. Selecting the full spec does not claim every normative statement is tested. Submission, simulation, and airdrop methods have no adapter and never execute.
+Categories come from each method's `x-compatibility.category`; the table describes the repository's category convention. New categories need no runner changes. Only methods marked `readOnly: true` execute. Others appear as **skipped**, even if they have examples. This explicit opt-in prevents accidental execution of submission or airdrop examples. The runner trusts this declaration; review it along with the request parameters. Selecting the full spec does not claim every normative statement is tested.
 
 WebSocket tests require an explicit `--ws-endpoint` or `RPC_WS_ENDPOINT`. HTTP and WebSocket services may use different addresses or ports. The runner never guesses a WebSocket port. Without one, selected WebSocket methods appear as skipped. When testing only `accountUnsubscribe`, the runner creates a prerequisite subscription on the same connection.
 
@@ -54,7 +54,7 @@ npm run compat -- --category Ledger --label local-validator --format json --outp
 npm run compat -- --category Accounts --label local-validator --format html --output /tmp/rpc-report.html
 ```
 
-Text is the default. JSON includes each probe, its category, source document, status, error code when relevant, and duration. It also includes the spec version, a SHA-256 fingerprint of the loaded methods, prose, schemas and errors, and coverage totals. HTML is a standalone report with a status filter and no external assets.
+Text is the default. JSON includes each probe, its category, source document, status, error code when relevant, and duration. It also includes the spec version, a SHA-256 fingerprint of the loaded methods, prose, schemas, errors and compatibility configuration, and coverage totals. HTML is a standalone report with a status filter and no external assets.
 
 Use `--output` to write a report directly. For machine-readable stdout, use `npm run --silent compat -- --format json` to suppress npm's command banner.
 
@@ -65,7 +65,7 @@ Use `--output` to write a report directly. For machine-readable stdout, use `npm
 | unsupported | The endpoint returns `MethodNotFound` (-32601). |
 | inconclusive | A declared availability error or missing live data prevents the behavior check. |
 | error | A timeout, connection failure, HTTP error, size limit, server internal error, or runner error prevents evaluation. |
-| skipped | A fixture, WebSocket endpoint, or live adapter is missing. |
+| skipped | A fixture, WebSocket endpoint, or read-only executable declaration is missing. |
 
 Exit code `0` means every selected probe passed. Code `1` means at least one probe failed or a method was unsupported. Code `2` means the run is incomplete without a demonstrated incompatibility, or local configuration is invalid. A report is still written for partial runs. Pass counts measure executed probes, not full conformance. A method can have both passes and failures.
 
@@ -73,9 +73,9 @@ Reports exclude endpoint URLs, headers, fixture values, raw responses, and serve
 
 ## Fixtures and bounded discovery
 
-The default account is the Clock sysvar. Random 32-byte addresses and 64-byte signatures exercise absent-account and absent-transaction behavior without submitting transactions. Ledger and token selections discover a recent finalized slot through `getSlot`, a small slot window through `getBlocks`, and one block through `getBlock`. Discovery can call these read methods even when they are not selected or not yet in the spec. It gathers a signature, an address with history, and token-owner information from that endpoint's block. Discovery responses are setup inputs, not conformance passes.
+The root `compatibility.yaml` declares fixture schemas, defaults, random base58 generation, and discovery steps. The default account is the Clock sysvar. Random 32-byte addresses and 64-byte signatures exercise absent-account and absent-transaction behavior without submitting transactions. The declared discovery group finds a recent finalized slot through `getSlot`, a small slot window through `getBlocks`, and one block through `getBlock`. Discovery can call explicitly declared read methods even when they are not selected or not yet in the spec. It gathers a signature, an address with history, and token-owner information from that endpoint's block. Discovery responses are setup inputs, not conformance passes.
 
-Use `--no-discover` to prevent setup reads. Provide `--fixtures /path/to/fixtures.json` for retained history, indexed accounts, or an endpoint that cannot serve ledger discovery. Supported JSON fields:
+Use `--no-discover` to prevent automatic discovery reads. Method-level setup still runs when declared. Provide `--fixtures /path/to/fixtures.json` for retained history, indexed accounts, or an endpoint that cannot serve ledger discovery. Accepted fields and their schemas come from `compatibility.yaml`. Common overrides:
 
 | Field | Purpose |
 | --- | --- |
@@ -101,7 +101,7 @@ Fixture overrides take precedence over discovery. A null transaction or empty po
 
 All calls run sequentially. Defaults are a 100 ms delay before each HTTP call, a 10 second per-call deadline, and a 16 MiB response cap. Configure these with `--delay`, `--timeout`, and `--max-bytes`. HTTP redirects are refused. There are no automatic retries. Requests are bounded on the client; cancelling a request does not guarantee the server stops its work.
 
-Program-account probes always use filters. They use the small sysvar program with a 40-byte data-size filter, or an SPL Token owner filter when a token-owner fixture is available. They request a zero-length data slice. Block probes request one block at a time, but full transaction variants can still be large. Choose limits for the target's capacity.
+The declared program-account probes use the small sysvar program with a 40-byte data-size filter and a zero-length data slice. Block probes request one block at a time, but full transaction variants can still be large. Choose limits for the target's capacity. New declarations must also use bounded requests; the runner cannot infer server-side query cost from a schema.
 
 WebSocket probes subscribe to the Clock sysvar, check deduplication, observe notifications for `--notification-wait` milliseconds (default 3000), and test unsubscribe behavior. They check the notification schema, subscription id, base64 encoding, and the spec's requirement to ignore `dataSlice`. No notification during the observation window is inconclusive. Closing the socket releases all subscriptions.
 
@@ -111,7 +111,70 @@ For authentication, put a JSON object of string headers in an environment variab
 npm run compat -- --headers-env RPC_TEST_HEADERS --category Accounts
 ```
 
-## Coverage and extension points
+## Declare tests in the spec
+
+A new read-only method can use its existing examples without any runner changes:
+
+```yaml
+x-compatibility:
+  category: Ledger
+  readOnly: true
+```
+
+The runner takes example parameter values in the order declared by the method's `params` list. It checks live results against `result.schema`, not the literal historical values in `examples[].result`. Examples provide schema smoke coverage, not inferred behavior tests. Missing optional parameters before a supplied positional parameter become `null`; request-schema validation rejects this if the method does not allow it.
+
+Add explicit cases when requests need live fixtures or behavior assertions. For example, an account method can declare:
+
+```yaml
+x-compatibility:
+  category: Accounts
+  readOnly: true
+  cases:
+    - name: missing-account
+      params: [{ $fixture: missingAccount }]
+      expect:
+        result:
+          properties:
+            value: { type: 'null' }
+    - name: invalid-key
+      params: ['bad!']
+      expect:
+        error: InvalidParams
+```
+
+Explicit cases replace example probes by default. Set `examples: true` to run both. All successful responses still pass through the method's base result schema. Error names resolve through `errors/codes.yaml`; cases may also declare an exact `message`. Negative cases intentionally bypass positive request-schema validation.
+
+The optional `expect` fields run in this order:
+
+| Field | Check |
+| --- | --- |
+| `shape` | Additional JSON Schema checked before data availability; a mismatch fails. |
+| `available` | JSON Schema describing required live data; a mismatch is inconclusive. |
+| `result` | Additional JSON Schema for request-dependent assertions; a mismatch fails. |
+| `assertions` | Cross-value equality, array ordering, or decoded base64 length checks; a mismatch fails. |
+
+Schemas can reference shared `#/components/schemas/` definitions. Use `const: { $fixture: name }` for a fixture-dependent equality check. Assertions use JSON Pointer paths: `{path: /value/0, equalsPath: /value/2}`, `{path: '', orderBy: /slot, direction: descending}`, or `{path: /result/value/data/0, base64Bytes: 40}`. An empty path selects the whole result. `*` expands array elements; `~0` and `~1` escape `~` and `/`.
+
+Use a matrix to execute each parameter combination:
+
+```yaml
+- name: commitment
+  matrix:
+    level: [processed, confirmed, finalized]
+  params: [{ commitment: { $matrix: level } }]
+```
+
+Each matrix dimension expands in declaration order and appends its value to the case name. Names must be unique after expansion. A case may expand to at most 1,000 variants. Fixture placeholders work recursively in parameters and assertions. `{ $fixture: tip, offset: -32 }` applies a safe integer offset. `default` supplies a fallback value or another placeholder. `requires: [signature]` explicitly skips a case when a fixture is absent.
+
+Cases may capture successful result values with `capture: {subscription: ''}`. Later cases in the same method can use `{ $fixture: subscription }`. Captures do not leak between methods. A method's `setup` list can invoke another declared read-only method on the same transport, with `method`, `params`, and optional `capture`. Setup results appear separately in the report and may be outside the selected method scope.
+
+WebSocket methods use the same executor. Declare `observe: true` and `subscription: { $fixture: subscription }` instead of `params` to inspect notifications. The runner checks the notification envelope and the method's `notification.schema`; assertion paths address the notification's `params` object. Each method and its setup share one connection, which closes after its cases finish. See `methods/websocket/accountSubscribe.yaml` and `accountUnsubscribe.yaml` for complete examples.
+
+Shared fixture declarations live in `compatibility.yaml`. Each fixture has a `schema` and optionally a `value` or `generate: {bytes: 32}`. Without either, it must come from an override or discovery. A discovery group lists the fixtures it `provides` and sequential `steps`. Each step declares `method`, `readOnly: true`, `params`, and captures. A capture selects a `path`, optionally filters candidates with a `where` JSON Schema, selects a `field` path, and applies an integer `offset`. The first candidate is used only if it matches the fixture schema. Overrides always win. A group runs only when the selected tests need one of its missing fixtures.
+
+`npm run validate` checks executable metadata, references, assertion schemas, matrix names, setup targets, and resolvable positive requests. Runtime checks validate requests again after dynamic captures resolve. Invalid definitions fail before endpoint access; missing runtime data produces explicit skips. Both method metadata and shared configuration are preserved as `x-compatibility` in the OpenRPC bundle.
+
+## Coverage and limits
 
 The runner validates shared schema references with the same AJV helper used by the spec tooling. Behavior probes cover account encoding defaults and variants, null and duplicate account entries, response wrapping, filters, token ownership, block detail and reward flags, transaction encodings, history ordering and limits, required parameters, invalid keys, commitment rejection, and minimum context slots.
 
@@ -119,6 +182,6 @@ Error data is validated whenever the method declares a schema for that code. Onl
 
 This is sampled coverage. It does not exhaustively test fork behavior, retention boundaries, transaction version gating, pagination, all filter combinations, every error payload, every encoding's decoded contents, or all prose requirements. Numeric values use JavaScript `number`; comparisons cannot establish exact integer compatibility above `2^53`. A successful schema check alone cannot prove data correctness.
 
-Add method probes in `src/compat/cases.ts` and category assignments in the same file. Each adapter refers to the loaded method's schema rather than copying its response type. `shape` assertions run before live-data availability checks; `check` assertions run after them. Use `nonempty` for behaviors that require actual data. Add deterministic tests in `test/compat.test.ts`, especially for false positives and coverage gaps. Never use internal endpoints in committed tests, examples, or reports.
+Add tests and categories to the method YAML, and shared fixture or discovery declarations to `compatibility.yaml`. TypeScript changes are needed only for a new generic execution or assertion capability, not for a new RPC method. Prose requirements do not execute automatically: express them as cases and assertions. Add deterministic tooling tests for false positives and coverage gaps. Never use internal endpoints in committed tests, examples, or reports.
 
 Run `npm test`, `npm run validate`, `npm run build`, and `npx tsc --noEmit` before submitting changes.

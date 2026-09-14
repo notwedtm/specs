@@ -25,6 +25,7 @@ documents a `data` schema. Clients that parse Agave's message text or read
 | `methods/http/`, `methods/websocket/` | One `<method>.yaml` (machine-readable schema) + `<method>.md` (normative prose) per method |
 | `schemas/` | Shared JSON Schema components, one per file |
 | `errors/codes.yaml` | Canonical error-code registry |
+| `compatibility.yaml` | Live-test fixture schemas, defaults, and discovery steps |
 | `proposals/` | RFC proposal documents |
 | `tooling/` | TypeScript validator + bundler |
 | `dist/openrpc.json` | CI-built canonical [OpenRPC](https://open-rpc.org) document — never hand-edited |
@@ -37,9 +38,7 @@ routers, codegen) should use it; humans should read `methods/`.
 
 ### Extensions
 
-`dist/openrpc.json` is a valid OpenRPC 1.2.6 document; everything Solana-
-specific rides in four `x-` extension fields, which a strict OpenRPC consumer
-may ignore without losing structural validity.
+`dist/openrpc.json` is a valid OpenRPC 1.2.6 document. Solana-specific metadata uses `x-` extension fields, which a strict OpenRPC consumer may ignore without losing structural validity.
 
 | Extension | Location | Contents |
 |---|---|---|
@@ -47,6 +46,7 @@ may ignore without losing structural validity.
 | `x-solana-implementations` | each method | Support matrix keyed by implementation (`agave`, `cloudbreak`, `superbank`), each with a `status` (`full`, `partial`, `none`) and optional `notes`. |
 | `x-notification` | `*Subscribe` methods | The `{name, schema}` of the notification the subscription pushes — OpenRPC has no native notion of a server-initiated message, so the subscribe method's own `result` is only the subscription id. |
 | `x-solana-errors` | document root | Map keyed by error **name** carrying `dataSchema`, `emittedBy`, and `description` for that error. |
+| `x-compatibility` | each method and document root | Method categories and executable live-test cases; shared fixture definitions and discovery steps at the root. |
 
 `x-solana-errors` is a root-level map rather than fields on the errors
 themselves because OpenRPC's `errorObject` is `additionalProperties: false` and
@@ -57,7 +57,7 @@ permits no `x-` extensions — so `components/errors/<Name>` is strictly
 
 ## Working locally
 
-To test a live RPC endpoint against this checkout, run `cd tooling && npm ci && npm run compat -- --help`. The runner selects the full spec, categories such as Accounts or Ledger, or individual methods. It produces text, JSON, and standalone HTML compatibility reports. See [Live RPC compatibility checks](tooling/compatibility.md) for fixtures, coverage, and exit codes.
+To test a live RPC endpoint against this checkout, run `cd tooling && npm ci && npm run compat -- --help`. The runner reads method examples and executable test declarations from YAML. It selects the full spec, categories such as Accounts or Ledger, or individual methods. It produces text, JSON, and standalone HTML compatibility reports. See [Live RPC compatibility checks](tooling/compatibility.md) for test declarations, fixtures, coverage, and exit codes.
 
 ```bash
 cd tooling
