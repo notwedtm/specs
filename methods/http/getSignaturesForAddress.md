@@ -84,5 +84,5 @@ node with transaction history disabled entirely fails every call with
     above the maximum instead of erroring, where Agave rejects it. The default
     and maximum limit are env-tunable; the shipped default is 1000.
   - Supports the standard `beforeSlot` / `untilSlot` slot cursors and rejects a slot cursor combined with its corresponding signature cursor.
-- **Agave**: does not implement the slot cursor members.
+- [**Agave**](../../implementations/agave.md): implements the base method but not the slot cursor extension. Its pinned [request handler](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L4293-L4325) accepts signature cursors only.
 - **cloudbreak**: method not served (account-state RPC only).
