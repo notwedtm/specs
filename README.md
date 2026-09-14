@@ -46,7 +46,10 @@ routers, codegen) should use it; humans should read `methods/`.
 | `x-solana-implementations` | each method | Support matrix keyed by implementation (`agave`, `cloudbreak`, `superbank`), each with a `status` (`full`, `partial`, `none`) and optional `notes`. |
 | `x-notification` | `*Subscribe` methods | The `{name, schema}` of the notification the subscription pushes — OpenRPC has no native notion of a server-initiated message, so the subscribe method's own `result` is only the subscription id. |
 | `x-solana-errors` | document root | Map keyed by error **name** carrying `dataSchema`, `emittedBy`, and `description` for that error. |
-| `x-compatibility` | each method and document root | Method categories and executable live-test cases; shared fixture definitions and discovery steps at the root. |
+| `x-tests` | each method | Executable tests from the method YAML's `tests` list. |
+| `x-category`, `x-read-only` | each method | Separate category and read-only safety metadata. |
+| `x-test-setup`, `x-test-examples` | each method, when declared | Optional prerequisite calls and example-test selection. |
+| `x-test-config` | document root | Shared fixture definitions and discovery steps from `compatibility.yaml`. |
 
 `x-solana-errors` is a root-level map rather than fields on the errors
 themselves because OpenRPC's `errorObject` is `additionalProperties: false` and

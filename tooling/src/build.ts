@@ -20,7 +20,9 @@ export function buildDocument(spec: SpecSource, info: any): any {
       if (y.status) method['x-solana-status'] = y.status
       if (y.implementations) method['x-solana-implementations'] = y.implementations
       if (y.notification) method['x-notification'] = y.notification
-      if (y['x-compatibility']) method['x-compatibility'] = y['x-compatibility']
+      for (const [source, extension] of Object.entries({ category: 'x-category', readOnly: 'x-read-only', tests: 'x-tests', testSetup: 'x-test-setup', testExamples: 'x-test-examples' })) {
+        if (Object.hasOwn(y, source)) method[extension] = y[source]
+      }
       return method
     })
 
@@ -49,7 +51,7 @@ export function buildDocument(spec: SpecSource, info: any): any {
     },
     methods,
     components: { schemas: spec.schemas, errors },
-    ...(spec.compatibility ? { 'x-compatibility': spec.compatibility } : {}),
+    ...(spec.compatibility ? { 'x-test-config': spec.compatibility } : {}),
     ...(Object.keys(errorExtensions).length > 0
       ? { 'x-solana-errors': errorExtensions }
       : {}),

@@ -1,6 +1,6 @@
 # Live RPC compatibility checks
 
-The runner reads method files, examples, and `x-compatibility` test declarations from this spec checkout. It executes those requests and checks responses against the method schemas and declared assertions. Method names, categories, fixtures, discovery calls, and behavior expectations come from YAML, not method-specific TypeScript adapters. Implementation support notes do not change expectations. It does not compare endpoints or require their slots, balances, or transaction history to match.
+The runner reads method files, examples, and `tests` lists from this spec checkout. It executes those requests and checks responses against the method schemas and declared assertions. Method names, categories, fixtures, discovery calls, and behavior expectations come from YAML, not method-specific TypeScript adapters. Implementation support notes do not change expectations. It does not compare endpoints or require their slots, balances, or transaction history to match.
 
 Use Node.js 20 or later. From `tooling/`:
 
@@ -43,7 +43,7 @@ Category names are case-insensitive. Method names match wire names exactly. Repe
 | Subscriptions | WebSocket methods |
 | Other | Methods without a category assignment |
 
-Categories come from each method's `x-compatibility.category`; the table describes the repository's category convention. New categories need no runner changes. Only methods marked `readOnly: true` execute. Others appear as **skipped**, even if they have examples. This explicit opt-in prevents accidental execution of submission or airdrop examples. The runner trusts this declaration; review it along with the request parameters. Selecting the full spec does not claim every normative statement is tested.
+Categories come from each method's `category` field; the table describes the repository's category convention. New categories need no runner changes. Only methods marked `readOnly: true` execute. Others appear as **skipped**, even if they have examples. This explicit opt-in prevents accidental execution of submission or airdrop examples. The runner trusts this declaration; review it along with the request parameters. Selecting the full spec does not claim every normative statement is tested.
 
 WebSocket tests require an explicit `--ws-endpoint` or `RPC_WS_ENDPOINT`. HTTP and WebSocket services may use different addresses or ports. The runner never guesses a WebSocket port. Without one, selected WebSocket methods appear as skipped. When testing only `accountUnsubscribe`, the runner creates a prerequisite subscription on the same connection.
 
@@ -113,36 +113,39 @@ npm run compat -- --headers-env RPC_TEST_HEADERS --category Accounts
 
 ## Declare tests in the spec
 
-A new read-only method can use its existing examples without any runner changes:
+Add a `tests` list directly to the method YAML. Keep `category` and `readOnly` as separate method fields. A test needs a name and positional parameters; `expect` is optional:
 
 ```yaml
-x-compatibility:
-  category: Ledger
-  readOnly: true
+category: Accounts
+readOnly: true
+tests:
+  - name: invalid-pubkey
+    params: ['bad!']
+    expect:
+      error: InvalidParams
 ```
 
-The runner takes example parameter values in the order declared by the method's `params` list. It checks live results against `result.schema`, not the literal historical values in `examples[].result`. Examples provide schema smoke coverage, not inferred behavior tests. Missing optional parameters before a supplied positional parameter become `null`; request-schema validation rejects this if the method does not allow it.
+Every successful response is checked against the method's existing `result.schema`. Use `expect` only for additional behavior or an expected error. Error names resolve through `errors/codes.yaml`; a test may also declare an exact `message`. Negative tests intentionally bypass positive request-schema validation.
 
-Add explicit cases when requests need live fixtures or behavior assertions. For example, an account method can declare:
+Tests can use shared live fixtures and extra result assertions:
 
 ```yaml
-x-compatibility:
-  category: Accounts
-  readOnly: true
-  cases:
-    - name: missing-account
-      params: [{ $fixture: missingAccount }]
-      expect:
-        result:
-          properties:
-            value: { type: 'null' }
-    - name: invalid-key
-      params: ['bad!']
-      expect:
-        error: InvalidParams
+category: Accounts
+readOnly: true
+tests:
+  - name: missing-account
+    params: [{ $fixture: missingAccount }]
+    expect:
+      result:
+        properties:
+          value: { type: 'null' }
 ```
 
-Explicit cases replace example probes by default. Set `examples: true` to run both. All successful responses still pass through the method's base result schema. Error names resolve through `errors/codes.yaml`; cases may also declare an exact `message`. Negative cases intentionally bypass positive request-schema validation.
+No TypeScript adapter is needed. To use a method's existing examples as schema smoke tests, set `readOnly: true` and omit `tests`. An explicit `tests: []` disables those automatic tests and reports a coverage gap. Categories alone never authorize requests.
+
+Example tests use parameter values in the order declared by the method's `params` list. They check live results against `result.schema`, not the literal historical values in `examples[].result`. Missing optional parameters before a supplied positional parameter become `null`; request-schema validation rejects this if the method does not allow it.
+
+### Optional behavior assertions
 
 The optional `expect` fields run in this order:
 
@@ -155,24 +158,33 @@ The optional `expect` fields run in this order:
 
 Schemas can reference shared `#/components/schemas/` definitions. Use `const: { $fixture: name }` for a fixture-dependent equality check. Assertions use JSON Pointer paths: `{path: /value/0, equalsPath: /value/2}`, `{path: '', orderBy: /slot, direction: descending}`, or `{path: /result/value/data/0, base64Bytes: 40}`. An empty path selects the whole result. `*` expands array elements; `~0` and `~1` escape `~` and `/`.
 
-Use a matrix to execute each parameter combination:
+### Optional matrices and setup
+
+Most tests need no setup or matrix. Use a matrix when the same test applies to several parameter combinations:
 
 ```yaml
-- name: commitment
-  matrix:
-    level: [processed, confirmed, finalized]
-  params: [{ commitment: { $matrix: level } }]
+tests:
+  - name: commitment
+    matrix:
+      level: [processed, confirmed, finalized]
+    params: [{ commitment: { $matrix: level } }]
 ```
 
 Each matrix dimension expands in declaration order and appends its value to the case name. Names must be unique after expansion. A case may expand to at most 1,000 variants. Fixture placeholders work recursively in parameters and assertions. `{ $fixture: tip, offset: -32 }` applies a safe integer offset. `default` supplies a fallback value or another placeholder. `requires: [signature]` explicitly skips a case when a fixture is absent.
 
-Cases may capture successful result values with `capture: {subscription: ''}`. Later cases in the same method can use `{ $fixture: subscription }`. Captures do not leak between methods. A method's `setup` list can invoke another declared read-only method on the same transport, with `method`, `params`, and optional `capture`. Setup results appear separately in the report and may be outside the selected method scope.
+Tests may capture successful result values with `capture: {subscription: ''}`. Later tests in the same method can use `{ $fixture: subscription }`. Captures do not leak between methods. An optional top-level `testSetup` list can invoke another declared read-only method on the same transport, with `method`, `params`, and optional `capture`. Setup results appear separately in the report and may be outside the selected method scope.
+
+Set the optional top-level `testExamples: true` to run example smoke tests alongside an explicit `tests` list. Set it to `false` to disable example smoke tests. This setting does not change the method's documentation `examples` list or the read-only safety requirement.
 
 WebSocket methods use the same executor. Declare `observe: true` and `subscription: { $fixture: subscription }` instead of `params` to inspect notifications. The runner checks the notification envelope and the method's `notification.schema`; assertion paths address the notification's `params` object. Each method and its setup share one connection, which closes after its cases finish. See `methods/websocket/accountSubscribe.yaml` and `accountUnsubscribe.yaml` for complete examples.
 
+### Shared fixtures and validation
+
 Shared fixture declarations live in `compatibility.yaml`. Each fixture has a `schema` and optionally a `value` or `generate: {bytes: 32}`. Without either, it must come from an override or discovery. A discovery group lists the fixtures it `provides` and sequential `steps`. Each step declares `method`, `readOnly: true`, `params`, and captures. A capture selects a `path`, optionally filters candidates with a `where` JSON Schema, selects a `field` path, and applies an integer `offset`. The first candidate is used only if it matches the fixture schema. Overrides always win. A group runs only when the selected tests need one of its missing fixtures.
 
-`npm run validate` checks executable metadata, references, assertion schemas, matrix names, setup targets, and resolvable positive requests. Runtime checks validate requests again after dynamic captures resolve. Invalid definitions fail before endpoint access; missing runtime data produces explicit skips. Both method metadata and shared configuration are preserved as `x-compatibility` in the OpenRPC bundle.
+`npm run validate` checks test declarations, references, assertion schemas, matrix names, setup targets, and resolvable positive requests. Runtime checks validate requests again after dynamic captures resolve. Invalid definitions fail before endpoint access; missing runtime data produces explicit skips.
+
+Source YAML uses plain field names. Only the generated OpenRPC document needs extension prefixes: `tests` becomes `x-tests`, `category` becomes `x-category`, and `readOnly` becomes `x-read-only`. Optional `testSetup` and `testExamples` become `x-test-setup` and `x-test-examples`. Shared configuration is preserved as root-level `x-test-config`.
 
 ## Coverage and limits
 

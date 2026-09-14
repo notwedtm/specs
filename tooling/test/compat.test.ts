@@ -39,11 +39,11 @@ describe('selection and coverage', () => {
   })
   it('puts transaction reads in Ledger and keeps submission and simulation in Transactions', () => {
     for (const name of ['getTransaction', 'getSignaturesForAddress']) expect(category(method(name))).toBe('Ledger')
-    for (const name of ['sendTransaction', 'simulateTransaction']) expect(category({ ...method('getBlock'), name, yaml: { 'x-compatibility': { category: 'Transactions' } } })).toBe('Transactions')
+    for (const name of ['sendTransaction', 'simulateTransaction']) expect(category({ ...method('getBlock'), name, yaml: { category: 'Transactions' } })).toBe('Transactions')
   })
   it('requires an explicit read-only declaration before executing examples', () => {
     for (const metadata of [undefined, { readOnly: false }]) {
-      const source = { ...method('getBalance'), yaml: { ...method('getBalance').yaml, 'x-compatibility': metadata } }
+      const source = { ...method('getBalance'), yaml: { ...method('getBalance').yaml, readOnly: metadata?.readOnly } }
       expect(probes(source, initialFixtures(spec), spec)[0].skip).toBeTruthy()
     }
   })

@@ -25,11 +25,14 @@ const caseSchema = {
   }, ['name']),
   oneOf: [{ required: ['params'], not: { anyOf: [{ required: ['observe'] }, { required: ['subscription'] }] } }, { required: ['observe', 'subscription'], not: { anyOf: [{ required: ['params'] }, { required: ['capture'] }] } }],
 }
-const metadataSchema = object({
-  category: { type: 'string', minLength: 1 }, readOnly: { type: 'boolean' }, examples: { type: 'boolean' },
-  cases: { type: 'array', maxItems: 1000, items: caseSchema },
-  setup: { type: 'array', maxItems: 100, items: object({ method: { type: 'string' }, params: { type: 'array' }, capture }, ['method', 'params']) },
-}, ['readOnly'])
+const metadataSchema = {
+  ...object({
+    category: { type: 'string', minLength: 1 }, readOnly: { type: 'boolean' }, testExamples: { type: 'boolean' },
+    tests: { type: 'array', maxItems: 1000, items: caseSchema },
+    testSetup: { type: 'array', maxItems: 100, items: object({ method: { type: 'string' }, params: { type: 'array' }, capture }, ['method', 'params']) },
+  }),
+  dependencies: { tests: ['readOnly'], testSetup: ['readOnly'], testExamples: ['readOnly'] },
+}
 const suiteSchema = object({
   version: { const: 1 },
   fixtures: { type: 'object', propertyNames: identifier, additionalProperties: {
@@ -85,7 +88,7 @@ export function checkCompatibility(spec: SpecSource): string[] {
       const context = `discovery ${group.name}/${step.name}`
       templates(step.params, globalNames, new Set(), context)
       const method = spec.methods.find((m) => m.name === step.method)
-      if (method && (method.transport !== 'http' || method.yaml['x-compatibility']?.readOnly !== true)) problems.push(`${context}: discovery requires a read-only HTTP method`)
+      if (method && (method.transport !== 'http' || method.yaml.readOnly !== true)) problems.push(`${context}: discovery requires a read-only HTTP method`)
       for (const [name, selection] of Object.entries<any>(step.capture)) {
         if (!globalNames.has(name)) problems.push(`${context}: capture names an undeclared fixture`)
         if (selection.where !== undefined) schemaCheck(selection.where, context)
@@ -93,18 +96,18 @@ export function checkCompatibility(spec: SpecSource): string[] {
     }
   }
   for (const method of spec.methods) {
-    const metadata = method.yaml['x-compatibility']
-    if (metadata === undefined) continue
-    const context = `${method.file}: x-compatibility`
+    const context = `${method.file}: tests`
+    if (Object.hasOwn(method.yaml, 'x-compatibility')) problems.push(`${context}: declare tests, category, and readOnly directly in the method YAML`)
+    const metadata: any = Object.fromEntries(Object.keys(metadataSchema.properties).filter((key) => Object.hasOwn(method.yaml, key)).map((key) => [key, method.yaml[key]]))
     if (!validateMetadata(metadata as unknown)) { problems.push(`${context}: ${ajv.errorsText(validateMetadata.errors)}`); continue }
     const known = new Set(globalNames)
-    for (const setup of metadata.setup ?? []) {
+    for (const setup of metadata.testSetup ?? []) {
       const target = spec.methods.find((m) => m.name === setup.method)
-      if (!target || target.transport !== method.transport || target.yaml['x-compatibility']?.readOnly !== true) problems.push(`${context}: setup must name a declared read-only method on the same transport`)
+      if (!target || target.transport !== method.transport || target.yaml.readOnly !== true) problems.push(`${context}: setup must name a declared read-only method on the same transport`)
       templates(setup.params, known, new Set(), context)
       for (const name of Object.keys(setup.capture ?? {})) known.add(name)
     }
-    for (const source of metadata.cases ?? []) {
+    for (const source of metadata.tests ?? []) {
       const combinations = Object.values<any[]>(source.matrix ?? {}).reduce((n, v) => n * v.length, 1)
       if (combinations > 1000) { problems.push(`${context}: matrix expands beyond 1000 cases`); continue }
       templates(source, known, new Set(Object.keys(source.matrix ?? {})), context)

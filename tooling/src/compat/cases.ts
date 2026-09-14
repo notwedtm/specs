@@ -49,7 +49,7 @@ export function initialFixtures(spec: SpecSource): Fixtures {
   }))
 }
 
-export function category(method: MethodSource): string { return method.yaml['x-compatibility']?.category ?? 'Other' }
+export function category(method: MethodSource): string { return method.yaml.category ?? 'Other' }
 
 export function selectMethods(methods: MethodSource[], categories: string[], names: string[]): MethodSource[] {
   const available = new Set(methods.map(category).map((v) => v.toLowerCase()))
@@ -94,10 +94,10 @@ export function selectPath(value: any, pointer: string): any[] {
 }
 
 export function caseSources(method: MethodSource): CaseSource[] {
-  const metadata = method.yaml['x-compatibility']
-  if (!metadata?.readOnly) return []
+  const metadata = method.yaml
+  if (metadata.readOnly !== true) return []
   const sources: CaseSource[] = []
-  if (metadata.examples ?? !metadata.cases?.length) {
+  if (metadata.testExamples ?? metadata.tests === undefined) {
     for (const example of method.yaml.examples ?? []) {
       const params = method.yaml.params ?? []
       const supplied = new Map((example.params ?? []).map((p: any) => [p.name, p.value]))
@@ -105,7 +105,7 @@ export function caseSources(method: MethodSource): CaseSource[] {
       sources.push({ name: `example/${example.name}`, params: params.slice(0, last + 1).map((p: any) => supplied.has(p.name) ? supplied.get(p.name) : null) })
     }
   }
-  for (const source of metadata.cases ?? []) {
+  for (const source of metadata.tests ?? []) {
     let variants: Fixtures[] = [{}]
     for (const [key, values] of Object.entries<any[]>(source.matrix ?? {})) variants = variants.flatMap((v) => values.map((value) => ({ ...v, [key]: value })))
     for (const variant of variants) {

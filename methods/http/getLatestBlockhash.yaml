@@ -54,26 +54,24 @@ implementations:
   cloudbreak: { status: none }
   superbank: { status: partial, notes: "processed requires grpc-head-cache; blockhash from latest stored block" }
 
-x-compatibility:
-  category: Ledger
-  readOnly: true
-  examples: false
-  cases:
-    - name: default
-      params: []
-    - name: commitment
-      params:
-        - commitment:
-            $matrix: commitment
-      matrix:
-        commitment:
-          - processed
-          - confirmed
-          - finalized
-    - name: min-context-slot
-      params:
-        - minContextSlot:
-            $fixture: futureSlot
-      expect:
-        error: MinContextSlotNotReached
-        message: Minimum context slot has not been reached
+category: Ledger
+readOnly: true
+tests:
+  - name: default
+    params: []
+  - name: commitment
+    params:
+      - commitment:
+          $matrix: commitment
+    matrix:
+      commitment:
+        - processed
+        - confirmed
+        - finalized
+  - name: min-context-slot
+    params:
+      - minContextSlot:
+          $fixture: futureSlot
+    expect:
+      error: MinContextSlotNotReached
+      message: Minimum context slot has not been reached

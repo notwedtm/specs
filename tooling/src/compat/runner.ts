@@ -97,7 +97,7 @@ export class Evaluator {
 
 export async function discoverFixtures(call: Call, fixtures: Fixtures, selected: MethodSource[], spec: SpecSource, overrides: Fixtures = {}): Promise<string[]> {
   const notes: string[] = []
-  const wanted = new Set(selected.filter((m) => m.yaml['x-compatibility']?.readOnly === true).flatMap((m) => [...fixtureReferences(m.yaml['x-compatibility']), ...(m.yaml['x-compatibility']?.cases ?? []).flatMap((c: any) => c.requires ?? [])]))
+  const wanted = new Set(selected.filter((m) => m.yaml.readOnly === true).flatMap((m) => [...fixtureReferences([m.yaml.tests, m.yaml.testSetup]), ...(m.yaml.tests ?? []).flatMap((c: any) => c.requires ?? [])]))
   for (const group of spec.compatibility?.discovery ?? []) {
     if (!group.provides.some((name: string) => wanted.has(name) && !Object.hasOwn(fixtures, name))) continue
     let discovered = 0
@@ -143,7 +143,8 @@ export async function run(spec: SpecSource, selected: MethodSource[], options: R
   }
   const discovery = options.discover ? await discoverFixtures(http, fixtures, selected, spec, options.fixtures) : ['Automatic fixture discovery disabled']
   const record = (method: MethodSource, probe: string, result: Pick<Result, 'status' | 'detail'> & Partial<Result>) => {
-    const entry: Result = { method: method.name, category: category(method), transport: method.transport, probe, source: `methods/${method.transport}/${method.name}.yaml#x-compatibility`, durationMs: 0, ...result }
+    const section = probe.startsWith('example/') ? 'examples' : 'tests'
+    const entry: Result = { method: method.name, category: category(method), transport: method.transport, probe, source: `methods/${method.transport}/${method.name}.yaml#${section}`, durationMs: 0, ...result }
     results.push(entry)
     options.progress?.(entry)
   }
@@ -185,7 +186,7 @@ export async function run(spec: SpecSource, selected: MethodSource[], options: R
     try {
       if (method.transport === 'websocket') { socket = new SocketTransport(options.wsEndpoint!, options); await socket.open() }
       const call = socket?.call ?? http
-      for (const setup of method.yaml['x-compatibility']?.setup ?? []) {
+      for (const setup of method.yaml.testSetup ?? []) {
         const target = spec.methods.find((m) => m.name === setup.method)!
         const probe = resolveProbe({ name: `setup/${method.name}/${setup.method}`, params: setup.params, capture: setup.capture }, local, spec)
         await execute(target, probe, call, local, socket)
@@ -208,7 +209,7 @@ export async function run(spec: SpecSource, selected: MethodSource[], options: R
     }, discovery,
     limitations: [
       'This is sampled schema and behavior coverage, not proof of full specification conformance.',
-      'Tests execute from method examples and x-compatibility metadata. Methods without readOnly: true are skipped.',
+      'Tests execute from method examples and tests lists in YAML. Methods without readOnly: true are skipped.',
       'Example smoke tests validate response schemas, not the literal historical example result values.',
       'Only declared assertions execute; prose requirements are not automatically inferred.',
       'Setup calls may exercise prerequisites outside the selected scope and are labeled setup in the report.',

@@ -27,7 +27,7 @@
 
 ### Executable compatibility cases
 
-Declare a method's live tests in its YAML `x-compatibility` block. Set `category` and explicitly set `readOnly: true` only when the requests are safe to execute against a live endpoint. The runner executes existing examples as schema smoke tests unless explicit `cases` replace them. Add fixture-backed cases, expected errors, and result assertions for behavior that examples do not cover. Adding a method does not require a TypeScript adapter. See the [declaration format](tooling/compatibility.md#declare-tests-in-the-spec).
+Declare a method's live tests in a top-level YAML `tests` list. Keep `category` and `readOnly` as separate method fields. Set `readOnly: true` only when the requests are safe to execute against a live endpoint. Each test has a `name`, `params`, and optional `expect`; successful responses always use the method's existing result schema. Omit `tests` to use existing examples as schema smoke tests, or set `tests: []` to disable them. Adding a method does not require a TypeScript adapter. See the [declaration format](tooling/compatibility.md#declare-tests-in-the-spec) for fixtures and optional setup.
 
 Put transaction history and status queries in `Ledger`. Reserve `Transactions` for `sendTransaction` and `simulateTransaction`. Do not enable transaction submission or airdrop examples as read-only tests. Keep private endpoints, credentials, and live fixture files outside this repository.
 
