@@ -20,4 +20,5 @@ Invalid transaction encoding, malformed transaction bytes, invalid configuration
 
 ## Implementation notes
 
+- [**Agave**](../../implementations/agave.md): reference implementation. See the pinned [request handler and processor](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L4070-L4227).
 - [**Cloudbreak**](../../implementations/cloudbreak.md) exposes this method only on a full unfiltered account index. It rejects `processed` with -32003 or serves confirmed state when configured to downgrade. A `minContextSlot` failure uses -32000 with null data instead of the standard -32016 payload. It reconstructs the runtime environment and bank inputs from indexed account and slot state. Standard conformance needs live comparison across successful execution, runtime errors, nonce transactions, address tables, returned accounts, feature gates, and replacement blockhashes.
