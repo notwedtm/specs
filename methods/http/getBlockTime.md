@@ -10,4 +10,5 @@ Returns the estimated Unix timestamp, in seconds, for the block at `slot`. The r
 
 ## Implementation notes
 
+- [**Agave**](../../implementations/agave.md): reference implementation. See the pinned [request handler](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L4271-L4277) and [processor](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L1622-L1684).
 - [**Superbank**](../../implementations/superbank.md): reads block metadata from ClickHouse. A stored block with no timestamp returns `null`, but a missing or skipped slot returns `LongTermStorageSlotSkipped` (-32009) rather than `null`.
