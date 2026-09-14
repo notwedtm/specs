@@ -14,4 +14,5 @@ Clients must treat `solana-core` as implementation-provided text. They must not 
 
 ## Implementation notes
 
+- [**Agave**](../../implementations/agave.md): reference implementation. See the pinned [request handler](https://github.com/anza-xyz/agave/blob/6dd9d38771e46103b9680357a855804165612602/rpc/src/rpc.rs#L3000-L3008).
 - [**Cloudbreak**](../../implementations/cloudbreak.md) returns `<upstream-solana-core>-cloudbreak<cloudbreak-version>` and omits `feature-set`. The composite string remains valid standard output.
